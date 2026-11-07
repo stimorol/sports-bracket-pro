@@ -1,5 +1,10 @@
 import React, { useEffect, useId, useState } from 'react';
+import gasSourceCode from '../../../google_apps_script.js?raw';
 import { setStoredDeviceName } from '../../utils/deviceLock';
+import {
+  OFFICIAL_SHEET_TEMPLATE_COPY_URL,
+  validateGasWebAppUrl,
+} from '../../utils/gasUrlValidator';
 import { ModalDialog } from '../common/ModalDialog';
 
 export const CloudSetupModal = ({
@@ -24,11 +29,19 @@ export const CloudSetupModal = ({
   const [devNameInput, setDevNameInput] = useState(deviceName || '');
   const [showPasscode, setShowPasscode] = useState(false);
 
+  const [urlWarning, setUrlWarning] = useState(null);
+  const [isTestingUrl, setIsTestingUrl] = useState(false);
+  const [testFeedback, setTestFeedback] = useState(null);
+  const [copiedScript, setCopiedScript] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       setUrlInput(gasUrl || '');
       setPassInput(passcode || '');
       setDevNameInput(deviceName || '');
+      setUrlWarning(null);
+      setTestFeedback(null);
+      setCopiedScript(false);
     }
   }, [isOpen, gasUrl, passcode, deviceName]);
 
@@ -45,7 +58,86 @@ export const CloudSetupModal = ({
     return { cleanUrl, cleanPass, cleanDev };
   };
 
-  const baseSharePrefix = urlInput.trim()
+  // 依循 modern-web-guidance `forms`：於 blur 時驗證網址，於 input 時立即清除錯誤提示
+  const handleUrlBlur = () => {
+    const check = validateGasWebAppUrl(urlInput);
+    setUrlWarning(check.warning);
+    if (check.isValid) {
+      persistCredentials();
+    }
+  };
+
+  const handleCopyGasSource = async () => {
+    try {
+      await navigator.clipboard.writeText(gasSourceCode);
+      setCopiedScript(true);
+      onNotify?.('已複製最新 Google Apps Script 程式碼 (v2.2)！', 'success');
+      setTimeout(() => setCopiedScript(false), 3000);
+    } catch {
+      onNotify?.('無法自動複製，請從 GitHub 儲存庫複製 google_apps_script.js', 'warning');
+    }
+  };
+
+  const handleTestConnection = async () => {
+    const trimmed = urlInput.trim();
+    if (!trimmed) {
+      setUrlWarning('請先貼上部署完成的 Google Apps Script 網頁應用程式網址 (.../exec)。');
+      return;
+    }
+
+    const check = validateGasWebAppUrl(trimmed);
+    if (!check.isValid) {
+      setUrlWarning(check.warning);
+      setTestFeedback(null);
+      return;
+    }
+
+    setUrlWarning(null);
+    setTestFeedback(null);
+    setIsTestingUrl(true);
+    persistCredentials();
+
+    try {
+      const response = await fetch(trimmed, {
+        method: 'GET',
+        redirect: 'follow',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const json = await response.json();
+      if (json.status === 'empty') {
+        setTestFeedback({
+          type: 'success',
+          text: '連線成功！此試算表目前為全新空白狀態，請點擊下方「上傳賽程結構」即可自動建立資料表與報表分頁。',
+        });
+      } else if (json.status === 'success') {
+        const title = json.data?.tournamentTitle || '既有賽事';
+        const passNote = json.hasPasscode ? '（雲端已啟用通行碼保護）' : '';
+        setTestFeedback({
+          type: 'success',
+          text: `連線成功！已偵測到雲端賽事：「${title}」${passNote}。`,
+        });
+      } else {
+        setTestFeedback({
+          type: 'error',
+          text: json.message || '雲端回傳狀態異常，請確認 GAS 程式碼是否為最新版本。',
+        });
+      }
+    } catch {
+      setTestFeedback({
+        type: 'error',
+        text: '連線失敗！最常見原因為部署時「誰可以存取」未選「所有人 (Anyone)」。請回 Apps Script 點選「部署 ➔ 管理部署作業 ➔ 鉛筆編輯 ➔ 建立新版本」並確認權限為所有人。',
+      });
+    } finally {
+      setIsTestingUrl(false);
+    }
+  };
+
+  const isUrlValidForSharing =
+    Boolean(urlInput.trim()) && validateGasWebAppUrl(urlInput).isValid;
+
+  const baseSharePrefix = isUrlValidForSharing
     ? `${window.location.origin}${window.location.pathname}?gas=${encodeURIComponent(
         urlInput.trim()
       )}`
@@ -66,16 +158,16 @@ export const CloudSetupModal = ({
   };
 
   return (
-    <ModalDialog isOpen={isOpen} onClose={onClose} closedBy="any" widthClass="w-full max-w-xl">
+    <ModalDialog isOpen={isOpen} onClose={onClose} closedBy="any" widthClass="w-full max-w-2xl">
       {({ titleId }) => (
-        <div className="flex flex-col max-h-[88vh]">
+        <div className="flex flex-col max-h-[90vh]">
           {/* Header */}
-          <div className="bg-gradient-to-r from-emerald-700 to-green-600 px-6 py-4 text-white flex justify-between items-center">
+          <div className="bg-gradient-to-r from-emerald-700 to-green-600 px-6 py-4 text-white flex justify-between items-center shrink-0">
             <h2 id={titleId} className="text-lg font-extrabold flex items-center">
               <i className="fa-brands fa-google-drive mr-2.5" aria-hidden="true"></i>
               {isScorerMode
                 ? '紀錄組平板設定（設備名稱與寫入通行碼）'
-                : '雲端同步、平板派發與觀賽分享'}
+                : '雲端同步、試算表範本設定與平板派發'}
             </h2>
             <button
               type="button"
@@ -88,7 +180,106 @@ export const CloudSetupModal = ({
           </div>
 
           {/* Body */}
-          <div className="p-6 overflow-y-auto space-y-5">
+          <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
+            {/* 首次設定／開新盃賽引導精靈 (依循 modern-web-guidance `content-first-noise-reduction` 使用原生 <details>：未填網址時自動展開，已設定時自動收合不干擾！) */}
+            {!isScorerMode && (
+              <details
+                open={!Boolean(gasUrl?.trim())}
+                className="group rounded-2xl border-2 border-emerald-200 bg-emerald-50/50 overflow-hidden"
+              >
+                <summary className="cursor-pointer list-none px-4 py-3.5 bg-emerald-100/70 hover:bg-emerald-100 flex items-center justify-between gap-2 font-extrabold text-sm text-emerald-950 select-none">
+                  <span className="flex items-center gap-2">
+                    <i className="fa-solid fa-wand-magic-sparkles text-emerald-700" aria-hidden="true"></i>
+                    <span>
+                      首次使用或舉辦新比賽？點此查看「3 分鐘建立專屬雲端試算表」引導
+                    </span>
+                  </span>
+                  <i
+                    className="fa-solid fa-chevron-down text-xs text-emerald-800 transition-transform group-open:rotate-180 shrink-0"
+                    aria-hidden="true"
+                  ></i>
+                </summary>
+
+                <div className="p-4 space-y-3.5 text-xs sm:text-sm text-stone-700 border-t border-emerald-200/80 bg-white">
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 font-semibold leading-relaxed">
+                    💡 <strong>萬用自適應設計：</strong>
+                    同一份試算表範本<strong>通吃全部 9 種運動與單淘汰／雙敗淘汰／循環賽</strong>（上傳時系統會自動建立資料表與積分榜，無須手動改欄位）！建議<strong>「每辦一場新盃賽，就建立一份新的試算表副本」</strong>，將各屆成績獨立保存在您的 Google 雲端硬碟。
+                  </div>
+
+                  {/* Step 1 */}
+                  <div className="rounded-xl border border-stone-200 p-3.5 bg-stone-50/70 space-y-2.5">
+                    <div className="font-extrabold text-stone-900 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center shrink-0">
+                        1
+                      </span>
+                      <span>建立您的專屬賽事試算表副本（已預載好 GAS 程式碼，免手動貼上！）</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 pl-7">
+                      <a
+                        href={OFFICIAL_SHEET_TEMPLATE_COPY_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-h-[40px] px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm inline-flex items-center gap-2 shadow-sm transition-colors"
+                      >
+                        <i className="fa-solid fa-copy" aria-hidden="true"></i>
+                        點此建立「萬用賽事試算表範本」副本
+                        <i className="fa-solid fa-arrow-up-right-from-square text-[11px]" aria-hidden="true"></i>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={handleCopyGasSource}
+                        className="min-h-[40px] px-3 py-2 rounded-xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-300 font-bold text-xs inline-flex items-center gap-1.5 transition-colors"
+                        title="若您想使用自己的空白試算表，或想手動更新舊試算表的程式碼，可點此複製完整 GAS 原始碼"
+                      >
+                        <i
+                          className={`fa-solid ${copiedScript ? 'fa-check text-emerald-600' : 'fa-code text-stone-500'}`}
+                          aria-hidden="true"
+                        ></i>
+                        {copiedScript ? '已複製 GAS 程式碼！' : '備用：複製最新 GAS 程式碼'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="rounded-xl border border-stone-200 p-3.5 bg-stone-50/70 space-y-1.5">
+                    <div className="font-extrabold text-stone-900 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center shrink-0">
+                        2
+                      </span>
+                      <span>在剛建立的試算表副本中發布「網頁應用程式」</span>
+                    </div>
+                    <ol className="list-decimal list-inside pl-7 space-y-1 text-xs text-stone-700 leading-relaxed">
+                      <li>
+                        在試算表上方選單點選 <strong>「擴充功能」➔「Apps Script」</strong>。
+                      </li>
+                      <li>
+                        點選右上角藍色按鈕 <strong>「部署」➔「新增部署作業」</strong>（左上角齒輪類型請確認為<strong>「網頁應用程式」</strong>）。
+                      </li>
+                      <li>
+                        「執行身分」選 <strong className="text-emerald-800">我 (Me)</strong>；「誰可以存取」請務必選 <strong className="text-emerald-800">所有人 (Anyone)</strong>，再點選「部署」。
+                      </li>
+                      <li className="text-stone-600">
+                        首次授權時若出現「Google 尚未驗證此應用程式」，請點左下角 <strong>「進階」➔「前往…(不安全)」➔「允許」</strong>（這是授權給您自己雲端硬碟腳本的正常流程）。
+                      </li>
+                    </ol>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="rounded-xl border border-stone-200 p-3.5 bg-stone-50/70">
+                    <div className="font-extrabold text-stone-900 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center shrink-0">
+                        3
+                      </span>
+                      <span>
+                        複製部署產生的「網頁應用程式網址 (<code className="font-mono text-emerald-800">.../exec</code>)」貼入下方，點擊「測試連線」後即可上傳賽程！
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            )}
+
             {/* 0. 本機設備識別名稱 */}
             <div className="bg-stone-50 border border-stone-200 rounded-xl p-4">
               <label
@@ -106,11 +297,11 @@ export const CloudSetupModal = ({
                 value={devNameInput}
                 onChange={(e) => setDevNameInput(e.target.value)}
                 onBlur={persistCredentials}
-                className="w-full min-h-[42px] px-3.5 py-2 border border-stone-300 rounded-xl text-sm font-bold bg-white text-stone-800"
+                className="w-full min-h-[44px] px-3.5 py-2 border border-stone-300 rounded-xl text-base sm:text-sm font-bold bg-white text-stone-800"
               />
             </div>
 
-            {/* 1. GAS URL (紀錄組平板模式若已由網址帶入可唯讀檢視或微調) */}
+            {/* 1. GAS URL + 智慧防呆驗證 + 測試連線按鈕 */}
             {!isScorerMode && (
               <div>
                 <label
@@ -119,7 +310,7 @@ export const CloudSetupModal = ({
                 >
                   Google Apps Script 網頁應用程式網址 (Web App URL)
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap sm:flex-nowrap gap-2">
                   <input
                     id={`${formId}-gas-url`}
                     name="gasUrl"
@@ -129,31 +320,90 @@ export const CloudSetupModal = ({
                     spellCheck={false}
                     placeholder="https://script.google.com/macros/s/.../exec"
                     value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    onBlur={persistCredentials}
+                    onChange={(e) => {
+                      setUrlInput(e.target.value);
+                      if (urlWarning) setUrlWarning(null);
+                      if (testFeedback) setTestFeedback(null);
+                    }}
+                    onBlur={handleUrlBlur}
+                    aria-invalid={Boolean(urlWarning)}
                     aria-describedby={`${formId}-gas-hint`}
-                    className="flex-grow min-h-[44px] px-3.5 py-2.5 border border-stone-300 rounded-xl text-sm font-mono text-stone-700 bg-stone-50 focus:bg-white"
+                    className={`flex-grow min-w-[220px] min-h-[48px] px-3.5 py-2.5 border rounded-xl text-base sm:text-sm font-mono text-stone-700 bg-stone-50 focus:bg-white ${
+                      urlWarning ? 'border-red-400 bg-red-50/40' : 'border-stone-300'
+                    }`}
                   />
                   <button
                     type="button"
+                    disabled={isTestingUrl}
+                    onClick={handleTestConnection}
+                    className="px-3.5 min-h-[48px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl font-extrabold text-xs sm:text-sm transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-60"
+                  >
+                    <i
+                      className={`fa-solid ${isTestingUrl ? 'fa-spinner fa-spin' : 'fa-plug-circle-check'}`}
+                      aria-hidden="true"
+                    ></i>
+                    {isTestingUrl ? '測試中...' : '測試連線'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
+                      const check = validateGasWebAppUrl(urlInput);
+                      if (!check.isValid) {
+                        setUrlWarning(check.warning);
+                        return;
+                      }
                       persistCredentials();
                       onNotify?.('雲端與設備設定已儲存於本機', 'success');
                     }}
                     aria-label="儲存雲端網址設定"
-                    className="px-4 min-h-[44px] bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-bold text-sm transition-colors shrink-0"
+                    className="px-3.5 min-h-[48px] bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-bold text-xs sm:text-sm transition-colors shrink-0 flex items-center gap-1.5"
                   >
-                    <i className="fa-solid fa-floppy-disk mr-1.5" aria-hidden="true"></i>
+                    <i className="fa-solid fa-floppy-disk" aria-hidden="true"></i>
                     儲存
                   </button>
                 </div>
+
+                {/* 網址誤貼即時防呆警告 */}
+                {urlWarning && (
+                  <div
+                    role="alert"
+                    className="mt-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 font-bold flex items-start gap-2 leading-relaxed"
+                  >
+                    <i className="fa-solid fa-triangle-exclamation text-red-600 mt-0.5 shrink-0" aria-hidden="true"></i>
+                    <span>{urlWarning}</span>
+                  </div>
+                )}
+
+                {/* 連線測試結果回饋 */}
+                {testFeedback && (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className={`mt-2 p-3 rounded-xl border text-xs font-bold flex items-start gap-2 leading-relaxed ${
+                      testFeedback.type === 'success'
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                        : 'bg-red-50 border-red-200 text-red-800'
+                    }`}
+                  >
+                    <i
+                      className={`fa-solid ${
+                        testFeedback.type === 'success'
+                          ? 'fa-circle-check text-emerald-600'
+                          : 'fa-circle-xmark text-red-600'
+                      } mt-0.5 shrink-0`}
+                      aria-hidden="true"
+                    ></i>
+                    <span>{testFeedback.text}</span>
+                  </div>
+                )}
+
                 <p
                   id={`${formId}-gas-hint`}
                   className="mt-1.5 text-xs text-stone-600 flex items-start gap-1.5"
                 >
                   <i className="fa-solid fa-circle-info text-blue-600 mt-0.5" aria-hidden="true"></i>
                   <span>
-                    部署 Google Apps Script (v2.1) 時，執行身分請選「<strong>我 (Me)</strong>」，存取權限請選「<strong>所有人 (Anyone)</strong>」。
+                    請貼上以 <code className="font-mono font-bold">https://script.google.com/macros/s/.../exec</code> 結尾的網址；執行身分選「<strong>我 (Me)</strong>」，存取權限選「<strong>所有人 (Anyone)</strong>」。
                   </span>
                 </p>
               </div>
@@ -193,7 +443,7 @@ export const CloudSetupModal = ({
                   onChange={(e) => setPassInput(e.target.value)}
                   onBlur={persistCredentials}
                   aria-describedby={`${formId}-pass-hint`}
-                  className="w-full min-h-[44px] pl-3.5 pr-20 py-2 border border-stone-300 rounded-xl text-sm bg-white text-stone-800"
+                  className="w-full min-h-[44px] pl-3.5 pr-20 py-2 border border-stone-300 rounded-xl text-base sm:text-sm bg-white text-stone-800"
                 />
                 <button
                   type="button"
@@ -216,7 +466,7 @@ export const CloudSetupModal = ({
               </p>
             </div>
 
-            {/* 3. 雲端上傳 / 下載操作 (主辦模式顯示完整上傳下載；紀錄組模式顯示儲存並同步最新賽程) */}
+            {/* 3. 雲端上傳 / 下載操作 */}
             {isScorerMode ? (
               <div className="flex justify-end gap-2">
                 <button
@@ -241,30 +491,54 @@ export const CloudSetupModal = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
                       type="button"
-                      disabled={!urlInput.trim()}
                       onClick={() => {
+                        if (!urlInput.trim()) {
+                          setUrlWarning(
+                            '請先完成上方「3 分鐘建立專屬雲端試算表」並貼上網頁應用程式網址 (.../exec) 後再上傳！'
+                          );
+                          document.getElementById(`${formId}-gas-url`)?.focus();
+                          return;
+                        }
+                        const check = validateGasWebAppUrl(urlInput);
+                        if (!check.isValid) {
+                          setUrlWarning(check.warning);
+                          document.getElementById(`${formId}-gas-url`)?.focus();
+                          return;
+                        }
                         const { cleanUrl, cleanPass } = persistCredentials();
                         onSync(cleanUrl, cleanPass);
                       }}
-                      className="flex items-center gap-3 p-4 bg-white border-2 border-emerald-200 hover:border-emerald-600 hover:bg-emerald-50/60 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                      className="flex items-center gap-3 p-4 bg-white border-2 border-emerald-200 hover:border-emerald-600 hover:bg-emerald-50/60 rounded-xl transition-all text-left"
                     >
                       <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
                         <i className="fa-solid fa-cloud-arrow-up text-lg" aria-hidden="true"></i>
                       </div>
                       <div>
                         <div className="font-extrabold text-stone-800 text-sm">上傳賽程結構</div>
-                        <div className="text-xs text-stone-600 mt-0.5">儲存並輸出試算表報表</div>
+                        <div className="text-xs text-stone-600 mt-0.5">自動建立資料表並輸出報表</div>
                       </div>
                     </button>
 
                     <button
                       type="button"
-                      disabled={!urlInput.trim()}
                       onClick={() => {
+                        if (!urlInput.trim()) {
+                          setUrlWarning(
+                            '請先貼上既有的 Google Apps Script 網頁應用程式網址 (.../exec) 後再載入賽況！'
+                          );
+                          document.getElementById(`${formId}-gas-url`)?.focus();
+                          return;
+                        }
+                        const check = validateGasWebAppUrl(urlInput);
+                        if (!check.isValid) {
+                          setUrlWarning(check.warning);
+                          document.getElementById(`${formId}-gas-url`)?.focus();
+                          return;
+                        }
                         const { cleanUrl } = persistCredentials();
                         onLoad(cleanUrl);
                       }}
-                      className="flex items-center gap-3 p-4 bg-white border-2 border-blue-200 hover:border-blue-600 hover:bg-blue-50/60 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                      className="flex items-center gap-3 p-4 bg-white border-2 border-blue-200 hover:border-blue-600 hover:bg-blue-50/60 rounded-xl transition-all text-left"
                     >
                       <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
                         <i className="fa-solid fa-cloud-arrow-down text-lg" aria-hidden="true"></i>
@@ -282,14 +556,14 @@ export const CloudSetupModal = ({
                   )}
                 </div>
 
-                {/* 4. 派發專用連結：紀錄組平板專屬連結 + 觀眾唯讀連結 */}
-                {urlInput.trim() && (
+                {/* 4. 派發專用連結：僅於網址格式正確時展示，避免誤發錯誤連結 */}
+                {isUrlValidForSharing && (
                   <div className="space-y-3">
                     {/* 紀錄組平板專屬連結 */}
                     <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-4 space-y-2">
                       <div className="text-sm font-bold text-stone-800 flex items-center gap-2">
                         <i className="fa-solid fa-tablet-screen-button text-indigo-600" aria-hidden="true"></i>
-                        紀錄組平板專屬連結（僅限開啟數位記分板，禁止刪改賽程結構）
+                        紀錄組平板專屬連結（僅限開啟數位記分板與匯出 PDF，禁止刪改賽程結構）
                       </div>
                       <p className="text-xs text-stone-600">
                         提供給各場地紀錄員平板開啟：點擊對戰卡即直接進入全螢幕「數位記分板」並自動鎖定該場次，隱藏重設賽制、改隊名與開新賽事等危險按鈕：

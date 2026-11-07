@@ -27,6 +27,8 @@ export const SetupPanel = ({
   onUpdate,
   isInitial,
   onNotify,
+  onOpenCloudSetup,
+  hasCloudConnected = false,
 }) => {
   const formId = useId();
   const [inputValue, setInputValue] = useState('');
@@ -163,24 +165,45 @@ export const SetupPanel = ({
       className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-stone-200 mb-8 max-w-6xl w-full mx-auto animate-fade-in mt-6"
     >
       <div className="flex flex-col gap-6 mb-8">
-        <div className="flex items-center gap-3 border-b border-stone-100 pb-5">
-          <span
-            className="w-10 h-10 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center shadow-sm"
-            aria-hidden="true"
-          >
-            <i className="fa-solid fa-sliders text-lg"></i>
-          </span>
-          <div>
-            <h2
-              id={`${formId}-heading`}
-              className="text-xl sm:text-2xl font-extrabold text-stone-800 tracking-tight"
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 pb-5">
+          <div className="flex items-center gap-3">
+            <span
+              className="w-10 h-10 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center shadow-sm shrink-0"
+              aria-hidden="true"
             >
-              {isInitial ? '初始賽事設定' : '下一階段賽事設定'}
-            </h2>
-            <p className="text-xs text-stone-600 mt-0.5">
-              選擇運動項目、賽制規則與種子排序，系統將自動推算標準籤表與輪空位置
-            </p>
+              <i className="fa-solid fa-sliders text-lg"></i>
+            </span>
+            <div>
+              <h2
+                id={`${formId}-heading`}
+                className="text-xl sm:text-2xl font-extrabold text-stone-800 tracking-tight"
+              >
+                {isInitial ? '初始賽事設定' : '下一階段賽事設定'}
+              </h2>
+              <p className="text-xs text-stone-600 mt-0.5">
+                選擇運動項目、賽制規則與種子排序，系統將自動推算標準籤表與輪空位置
+              </p>
+            </div>
           </div>
+
+          {isInitial && onOpenCloudSetup && (
+            <button
+              type="button"
+              onClick={onOpenCloudSetup}
+              className={`min-h-[44px] px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold border flex items-center gap-2 transition-colors shadow-sm ${
+                hasCloudConnected
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                  : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50'
+              }`}
+            >
+              <i className="fa-brands fa-google-drive text-emerald-600" aria-hidden="true"></i>
+              <span>
+                {hasCloudConnected
+                  ? '已連結雲端試算表（點此管理或載入既有賽事）'
+                  : '連結 Google 試算表範本（多平板同步／載入舊賽程）'}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* 三欄主設定 */}

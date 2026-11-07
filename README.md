@@ -57,13 +57,17 @@ npm run build
 > Windows 使用者若僅需離線開啟，亦可直接執行 `npm start`（或雙擊 `啟動本地預覽伺服器.bat`）零套件啟動預編譯好的 `dist/`。
 
 ### B. 連結 Google 試算表雲端資料庫（選用，支援多平板即時同步）
-1. 建立一份空白 **Google 試算表 (Google Sheets)**，點選上方選單 **「擴充功能」➔「Apps Script」**。
-2. 將本專案根目錄 [`google_apps_script.js`](./google_apps_script.js) 的完整程式碼貼上取代預設內容並儲存。
-3. 點選右上角 **「部署」➔「新增部署作業」**（更新時請選「管理部署作業 ➔ 編輯 ➔ 建立新版本」）：
+> 💡 **萬用自適應架構**：同一份試算表範本**通吃全部 9 種運動與單淘汰／雙敗淘汰／循環賽**（首次上傳時系統會自動建立隱藏資料表與賽程／積分榜報表分頁，無須手動調整欄位）！建議**「每舉辦一場新盃賽，就建立一份新的試算表副本」**，即可獨立保存各屆成績。
+
+1. **一鍵建立專屬試算表副本（推薦，已內建 GAS 程式碼）**：
+   - 點擊 [**👉 點此建立「萬用賽事試算表範本」副本**](https://docs.google.com/spreadsheets/d/1FzM6Sy4cFkzWfKahzxes5gtv4ZzSACoFutu3uCeYosI/copy)（或開啟系統內「設定雲端同步」點擊引導按鈕）。
+   - *備用方案*：若您想使用自己的空白 Google 試算表，請點選「擴充功能 ➔ Apps Script」，將本專案根目錄 [`google_apps_script.js`](./google_apps_script.js) 完整程式碼貼上取代預設內容並儲存（系統雲端設定視窗亦提供一鍵複製程式碼按鈕）。
+2. 在建立好的試算表副本上方選單點選 **「擴充功能」➔「Apps Script」**，再點選右上角 **「部署」➔「新增部署作業」**：
    - 類型：**網頁應用程式 (Web App)**
    - 執行身分：**我 (Me)**
    - 誰可以存取：**所有人 (Anyone)**
-4. 複製產生的 `https://script.google.com/macros/s/.../exec` 網址，貼入系統右上角 **「設定雲端同步」** 即可產生紀錄組平板連結與觀賽連結！
+   - *首次授權提示*：若出現「Google 尚未驗證此應用程式」，請點選左下角 **「進階」➔「前往…(不安全)」➔「允許」**。
+3. 複製產生的 `https://script.google.com/macros/s/.../exec` 網址，貼入系統 **「設定雲端同步」** 並點擊 **「測試連線」** 驗證成功後，即可上傳賽程並派發紀錄組平板連結與觀賽連結！
 
 ### C. 部署為正式網站（Firebase Hosting 或 GitHub Pages）
 - **Firebase Hosting**：專案已內建 [`firebase.json`](./firebase.json)，執行 `npx firebase-tools login` 與 `npx firebase-tools deploy --only hosting` 即可發布。

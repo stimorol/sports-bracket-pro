@@ -2,6 +2,13 @@ node_modules/
 .firebase/
 legacy/
 .DS_Store
+desktop.ini
 *.log
 .env
 .env.*
+*.gsheet
+*.gdoc
+*.gslides
+*.gform
+*.gdraw
+*.gscript

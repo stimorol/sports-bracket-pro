@@ -1308,6 +1308,8 @@ export const App = () => {
               onGenerate={handleGenerate}
               onUpdate={updateActiveStage}
               onNotify={notify}
+              onOpenCloudSetup={() => setIsCloudModalOpen(true)}
+              hasCloudConnected={Boolean(gasUrl.trim())}
             />
           )
         ) : viewTab === 'PODIUM' ? (

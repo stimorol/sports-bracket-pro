@@ -4,6 +4,10 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  OFFICIAL_SHEET_TEMPLATE_COPY_URL,
+  validateGasWebAppUrl,
+} from '../src/utils/gasUrlValidator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const gasCode = fs.readFileSync(path.join(__dirname, '..', 'google_apps_script.js'), 'utf8');
@@ -546,5 +550,47 @@ describe('Google Apps Script Backend — Chunking, Passcode & Standings Tests', 
     assert.equal(afternoonLock.status, 'success');
     assert.equal(afternoonLock.data.stages[0].matches[0].setScores.length, 1);
     assert.equal(afternoonLock.data.stages[0].matches[0].customBestOf, 3);
+  });
+
+  it('5. Validates GAS Web App URLs accurately and catches mistaken Google Sheets, /edit, and /dev URLs', () => {
+    assert.equal(
+      OFFICIAL_SHEET_TEMPLATE_COPY_URL,
+      'https://docs.google.com/spreadsheets/d/1FzM6Sy4cFkzWfKahzxes5gtv4ZzSACoFutu3uCeYosI/copy'
+    );
+
+    // Valid standard & Google Workspace GAS /exec URLs
+    assert.equal(
+      validateGasWebAppUrl('https://script.google.com/macros/s/AKfycbx123456789/exec').isValid,
+      true
+    );
+    assert.equal(
+      validateGasWebAppUrl('https://script.google.com/a/macros/edu.tw/s/AKfycbx123456789/exec')
+        .isValid,
+      true
+    );
+
+    // Empty string is treated as valid (cleared / local-only mode)
+    assert.equal(validateGasWebAppUrl('   ').isValid, true);
+
+    // Mistaken Google Sheet URL
+    const sheetCheck = validateGasWebAppUrl(
+      'https://docs.google.com/spreadsheets/d/1FzM6Sy4cFkzWfKahzxes5gtv4ZzSACoFutu3uCeYosI/edit?usp=sharing'
+    );
+    assert.equal(sheetCheck.isValid, false);
+    assert.ok(sheetCheck.warning.includes('Google 試算表網址'));
+
+    // Mistaken Apps Script Editor URL
+    const editCheck = validateGasWebAppUrl(
+      'https://script.google.com/home/projects/1abcDEF/edit'
+    );
+    assert.equal(editCheck.isValid, false);
+    assert.ok(editCheck.warning.includes('Apps Script 編輯器網址'));
+
+    // Mistaken /dev Test Deployment URL
+    const devCheck = validateGasWebAppUrl(
+      'https://script.google.com/macros/s/AKfycbx123456789/dev'
+    );
+    assert.equal(devCheck.isValid, false);
+    assert.ok(devCheck.warning.includes('/dev'));
   });
 });
