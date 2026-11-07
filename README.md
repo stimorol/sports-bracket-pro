@@ -1,7 +1,7 @@
 # Sports Bracket Pro — 運動賽程表產生器與場邊平板數位記分板系統
 
 > **線上正式版體驗 (Firebase Hosting)**：[https://hao-sports-bracket.web.app](https://hao-sports-bracket.web.app)  
-> **版權所有**：`© 2026 Hao. All Rights Reserved.`（非商業教育與賽事分享授權）
+> **版權所有**：`© 2026 Hao. GEG TAIWAN. All Rights Reserved.`（非商業教育與賽事分享授權）
 
 結合 **React + Vite + Tailwind CSS** 模組化前端與 **Google Apps Script (Google Sheets)** 簡易雲端資料庫的零成本運動賽務管理系統。專為校園體育課、校慶運動會、系際盃、社團聯賽與民間運動賽事打造——**免架設付費伺服器，一台平板即可變身標準場邊大字數位記分板，完賽一鍵匯出 A4 正式比賽紀錄簽認單 PDF！**
 
@@ -73,9 +73,9 @@ npm run build
 
 ## 📜 版權與授權聲明 (Copyright & License)
 
-**Copyright © 2026 Hao. All Rights Reserved.**
+**Copyright © 2026 Hao. GEG TAIWAN. All Rights Reserved.**
 
 本專案採用 **《非商業教育與賽事分享授權條款》(Non-Commercial Educational & Sports Event Sharing License)**，詳見 [`LICENSE`](./LICENSE)：
 1. **免費非商業使用**：免費授權予各級學校、體育教師、學生社團及民間非營利體育賽事活動自由使用、部署、教學與非商業改作分享。
-2. **保留版權署名**：任何使用、複製、公開部署或衍生修改版本，均須於網頁頁尾、匯出紀錄表及原始碼中完整保留 `© 2026 Hao. All Rights Reserved.` 版權聲明，不得移除或遮蔽。
-3. **禁止商業販售**：未經著作權人（Hao）事前書面同意，嚴禁將本軟體或其修改版本用於商業販售、付費租賃、商業標案交付或任何營利行為。
+2. **保留版權署名**：任何使用、複製、公開部署或衍生修改版本，均須於網頁頁尾、匯出紀錄表及原始碼中完整保留 `© 2026 Hao. GEG TAIWAN. All Rights Reserved.` 版權聲明，不得移除或遮蔽。
+3. **禁止商業販售**：未經著作權人（Hao. GEG TAIWAN）事前書面同意，嚴禁將本軟體或其修改版本用於商業販售、付費租賃、商業標案交付或任何營利行為。

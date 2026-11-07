@@ -1,6 +1,6 @@
 /**
  * Sports Bracket Pro — Google Apps Script 雲端資料庫與自動報表引擎 (v2.2)
- * Copyright (c) 2026 Hao. All Rights Reserved.
+ * Copyright (c) 2026 Hao. GEG TAIWAN. All Rights Reserved.
  * 授權規範：免費供學校與民間非營利體育賽事使用，保留所有權利，未經授權嚴禁商業販售。
  *
  * 功能升級亮點：

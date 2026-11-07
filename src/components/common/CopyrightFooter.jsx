@@ -5,7 +5,7 @@ export const GITHUB_REPO_URL = 'https://github.com/stimorol/sports-bracket-pro';
 
 /**
  * 應用程式全域版權頁尾與非商業授權聲明對話框
- * © 2026 Hao. All Rights Reserved.
+ * © 2026 Hao. GEG TAIWAN. All Rights Reserved.
  */
 export const CopyrightFooter = () => {
   const [isLicenseOpen, setIsLicenseOpen] = useState(false);
@@ -16,7 +16,7 @@ export const CopyrightFooter = () => {
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-extrabold text-stone-700">
-              © 2026 Hao. All Rights Reserved.
+              © 2026 Hao. GEG TAIWAN. All Rights Reserved.
             </span>
             <span className="hidden sm:inline text-stone-300" aria-hidden="true">
               |
@@ -74,7 +74,7 @@ export const CopyrightFooter = () => {
 
             <div className="p-6 overflow-y-auto space-y-4 text-xs sm:text-sm text-stone-700 leading-relaxed">
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 font-extrabold text-center">
-                © 2026 Hao. All Rights Reserved.
+                © 2026 Hao. GEG TAIWAN. All Rights Reserved.
               </div>
 
               <div className="space-y-2.5">
@@ -86,13 +86,13 @@ export const CopyrightFooter = () => {
                   <strong className="text-stone-900">2. 姓名標示與版權保留：</strong>
                   任何公開部署、複製或衍生修改之版本，均須完整保留應用程式頁尾、匯出紀錄單與原始碼中之「
                   <code className="font-mono font-bold text-stone-900">
-                    © 2026 Hao. All Rights Reserved.
+                    © 2026 Hao. GEG TAIWAN. All Rights Reserved.
                   </code>
                   」版權聲明，不得移除或遮蔽原作者署名。
                 </p>
                 <p>
                   <strong className="text-stone-900">3. 禁止商業販售：</strong>
-                  未經著作權人（Hao）事前書面授權，嚴禁將本軟體或其修改版本用於商業販售、付費租賃、商業標案交付或任何營利行為。
+                  未經著作權人（Hao. GEG TAIWAN）事前書面授權，嚴禁將本軟體或其修改版本用於商業販售、付費租賃、商業標案交付或任何營利行為。
                 </p>
               </div>
 

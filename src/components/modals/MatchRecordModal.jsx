@@ -347,7 +347,7 @@ export const MatchRecordSheet = ({ record }) => {
 
         <div className="mt-3 flex justify-between items-center text-[10px] text-stone-500">
           <span>請雙方隊長確認比分無誤後簽名，簽認後即以本紀錄表為大會正式成績依據。</span>
-          <span className="font-mono">{record.tournamentTitle} 賽務系統製表 · © 2026 Hao</span>
+          <span className="font-mono">{record.tournamentTitle} 賽務系統製表 · © 2026 Hao. GEG TAIWAN</span>
         </div>
       </footer>
     </article>
