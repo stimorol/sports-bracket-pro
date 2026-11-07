@@ -1,0 +1,471 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --scrollbar-thumb: #a8a29e;
+  --scrollbar-track: transparent;
+}
+
+/* 全局背景：暖灰漸層 */
+body {
+  background: linear-gradient(135deg, #f5f5f4 0%, #e7e5e4 100%);
+  min-height: 100vh;
+  color: #44403c;
+}
+
+/* 標準捲軸樣式與舊版 WebKit 降級備援 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 5px;
+  }
+}
+
+/* Screen Reader 專用隱藏輔助類別 */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* 原生 <dialog> 樣式與背景滾動隔離 (Mandatory modern-web-guidance rules) */
+dialog {
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: min(94vw, 56rem);
+  max-height: 90vh;
+}
+
+dialog.scoreboard-dialog {
+  max-width: 99vw;
+  max-height: 98vh;
+}
+
+/* 場館級深色數位記分板專屬表面 (component-specific-light-dark-theme) */
+.scoreboard-dark-surface {
+  color-scheme: only dark;
+  background-color: #0c0a09;
+  color: #fafaf9;
+  accent-color: #f97316;
+  --scrollbar-thumb: #57534e;
+  --scrollbar-track: #1c1917;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreboard-dark-surface:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+}
+
+/* 選手遠距高可視巨型比分數字 (依視窗長寬自動滿版縮放，10~20公尺外清晰可讀) */
+.scoreboard-giant-digit {
+  font-size: clamp(6.75rem, min(31vh, 22vw), 22rem);
+  line-height: 0.86;
+  letter-spacing: -0.04em;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 6px 28px rgba(0, 0, 0, 0.7);
+}
+
+.scoreboard-giant-digit.is-ultra {
+  font-size: clamp(8rem, min(40vh, 26vw), 26rem);
+}
+
+.scoreboard-giant-digit.is-three-digits {
+  font-size: clamp(5rem, min(24vh, 15.5vw), 16rem);
+  line-height: 0.88;
+  letter-spacing: -0.05em;
+}
+
+.scoreboard-giant-digit.is-ultra.is-three-digits {
+  font-size: clamp(6rem, min(30vh, 18vw), 19rem);
+}
+
+.scoreboard-clock-digit {
+  font-size: clamp(2.1rem, min(6.5vh, 7vw), 4.5rem);
+  line-height: 1;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreboard-callout-digit {
+  font-size: clamp(2rem, min(6vh, 6.5vw), 4rem);
+  line-height: 1;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(28, 25, 23, 0.52);
+  backdrop-filter: blur(3px);
+}
+
+/* Toast Popover Top-Layer 樣式 (支援 @oddbird/popover-polyfill) */
+.toast-popover[popover] {
+  margin: 0;
+  inset: auto;
+  border: none;
+  padding: 0;
+  background: transparent;
+  position: fixed;
+  right: 1.25rem;
+  top: calc(4.75rem + var(--toast-offset, 0px));
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.22s ease-out,
+    transform 0.22s ease-out,
+    top 0.22s ease-out,
+    display 0.22s allow-discrete,
+    overlay 0.22s allow-discrete;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-popover[popover] {
+    transform: none;
+    transition: opacity 0.15s ease-out;
+  }
+}
+
+.toast-popover[popover]:is(:popover-open, .\:popover-open) {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@starting-style {
+  .toast-popover[popover]:is(:popover-open, .\:popover-open) {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* 2D 賽程畫布自由平移 (2d-panning) */
+.pan-viewport {
+  overflow: auto;
+  scroll-axis-lock: none;
+  overscroll-behavior: contain;
+}
+
+.pan-viewport:focus-visible {
+  outline: 3px solid #ea580c;
+  outline-offset: -3px;
+}
+
+/* 鍵盤高對比焦點指示器 */
+:where(button, a:any-link, input, select, textarea):focus-visible {
+  outline: 2.5px solid #ea580c;
+  outline-offset: 2px;
+}
+
+/* 對戰卡片樣式 */
+.match-card {
+  transition:
+    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.22s ease;
+  position: relative;
+  z-index: 20;
+  background: #ffffff;
+  border: 1px solid #d6d3d1;
+  text-align: left;
+}
+
+.match-card.interactive:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 10px 25px -5px rgba(234, 88, 12, 0.16),
+    0 8px 10px -6px rgba(234, 88, 12, 0.1);
+  border-color: #fb923c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-card.interactive:hover {
+    transform: none;
+  }
+}
+
+.match-card.is-bye-card {
+  background: #ffffff;
+  border: 1px dashed #a8a29e;
+  border-left: 4px solid #ea580c;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 0 12px;
+}
+
+.match-card.is-final {
+  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+  border-color: #d97706;
+  box-shadow: 0 0 24px rgba(217, 119, 6, 0.3);
+  z-index: 30;
+}
+
+.match-card.is-reset {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+  border-color: #ea580c;
+  box-shadow: 0 0 20px rgba(234, 88, 12, 0.25);
+  z-index: 30;
+}
+
+.match-card.is-third {
+  border-color: #b45309;
+  border-style: dashed;
+  background-color: #fffbeb;
+}
+
+.line-color {
+  background-color: #a8a29e;
+}
+
+/* 響應式資料表 (responsive-table) */
+.table-wrapper {
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: min(560px, 75vh);
+  container-type: inline-size;
+}
+
+.standings-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.standings-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+}
+
+.standings-table tbody th[scope="row"] {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background: inherit;
+}
+
+@container (width < 520px) {
+  .standings-table,
+  .standings-table thead,
+  .standings-table tbody,
+  .standings-table tr,
+  .standings-table th,
+  .standings-table td {
+    display: block;
+  }
+
+  .standings-table thead {
+    display: none;
+  }
+
+  .standings-table tbody tr {
+    margin-block-end: 0.75rem;
+    border: 1px solid #e7e5e4;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: #ffffff;
+  }
+
+  .standings-table tbody th[scope="row"] {
+    position: sticky;
+    inset-block-start: 0;
+    background: #fafaf9;
+    border-bottom: 1px solid #e7e5e4;
+    padding: 0.625rem 1rem;
+  }
+
+  .standings-table tbody td {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.4rem 1rem;
+    text-align: right;
+  }
+
+  .standings-table tbody td[data-col]::before {
+    content: attr(data-col) "：";
+    font-weight: 600;
+    color: #57534e;
+  }
+}
+
+/* 動畫與減少動態偏好支援 (motion) */
+@keyframes pop-up {
+  0% {
+    transform: scale(0.85) translateY(32px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.podium-item {
+  animation: pop-up 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.podium-1 {
+  animation-delay: 0.18s;
+}
+.podium-2 {
+  animation-delay: 0.08s;
+}
+.podium-3 {
+  animation-delay: 0.28s;
+}
+.podium-4 {
+  animation-delay: 0.36s;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.35s ease-out;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* Loading Overlay */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.82);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 5px solid #e7e5e4;
+  border-top: 5px solid #ea580c;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 0.65;
+  }
+}
+
+/* 螢幕模式下隱藏專供列印輸出的比賽紀錄單根節點 */
+@media screen {
+  .match-record-print-only {
+    display: none !important;
+  }
+}
+
+/* 列印與匯出 PDF 專用樣式 */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #0c0a09 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print,
+  .toast-popover {
+    display: none !important;
+  }
+
+  /* 模式 A：匯出／列印「正式比賽成績紀錄單」(隔離隱藏主畫面與所有彈窗，僅輸出乾淨 A4 紀錄表) */
+  body[data-print-target="match-record"] #app-main-shell,
+  body[data-print-target="match-record"] dialog,
+  body[data-print-target="match-record"] dialog::backdrop {
+    display: none !important;
+  }
+
+  body[data-print-target="match-record"] #match-record-print-root.match-record-print-only {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .match-record-page {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .match-record-page + .match-record-page {
+    break-before: page;
+    page-break-before: always;
+    margin-top: 0 !important;
+  }
+
+  /* 模式 B：一般賽程樹狀圖／循環賽積分表列印 */
+  body:not([data-print-target="match-record"]) #match-record-print-root {
+    display: none !important;
+  }
+
+  .pan-viewport {
+    overflow: visible !important;
+  }
+
+  .match-card {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+}

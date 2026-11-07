@@ -1,0 +1,32 @@
+{
+  "name": "sports-bracket-pro",
+  "private": true,
+  "version": "2.2.0",
+  "description": "運動賽程表產生器、場邊平板數位記分板與正式比賽紀錄 PDF 匯出系統 (Vite + React + GAS)",
+  "author": "Hao",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stimorol/sports-bracket-pro.git"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve-dist.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/tournamentEngine.test.js tests/scoreboardEngine.test.js tests/gasEngine.test.js"
+  },
+  "dependencies": {
+    "@oddbird/popover-polyfill": "^0.6.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.5"
+  }
+}
