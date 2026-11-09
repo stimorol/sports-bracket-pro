@@ -43,7 +43,7 @@ export const formatRecordTimestamp = (isoOrDate) => {
 /**
  * 產生該運動與賽制之規則摘要文字
  */
-const buildRulesSummary = (sport, effectiveBestOf, sbState) => {
+const buildRulesSummary = (sport, effectiveBestOf, sbState, config = {}) => {
   const rules = sbState?.rules || sport.defaultRules || {};
   const unitLabel =
     effectiveBestOf > 1
@@ -54,6 +54,14 @@ const buildRulesSummary = (sport, effectiveBestOf, sbState) => {
     const pCount = rules.totalPeriods || 4;
     const pMins = rules.periodMinutes || 10;
     return `${unitLabel} · 每戰 ${pCount} 節（每節 ${pMins} 分鐘）`;
+  }
+
+  if (sport.scoreboardTemplate === 'SOCCER') {
+    const hMins = rules.halfMinutes || config?.soccerHalfMinutes || 20;
+    const foulNote = rules.foulLimitPerHalf
+      ? ` · 單半場滿 ${rules.foulLimitPerHalf} 犯起第二罰球點`
+      : '';
+    return `${unitLabel} · 上下半場各 ${hMins} 分鐘${foulNote}`;
   }
 
   if (sport.scoreboardTemplate === 'BASEBALL') {
@@ -67,8 +75,10 @@ const buildRulesSummary = (sport, effectiveBestOf, sbState) => {
       SIDEOUT_SINGLES: '單打發球得分制',
       RALLY: '落地得分制 (Rally)',
     };
-    const modeText = modeMap[rules.scoringMode] || '標準匹克球規則';
-    const pts = rules.targetPoints || 11;
+    const resolvedMode =
+      rules.scoringMode || config?.pickleballScoringMode || 'SIDEOUT_DOUBLES';
+    const modeText = modeMap[resolvedMode] || '標準匹克球規則';
+    const pts = rules.targetPoints || config?.pickleballTargetPoints || 11;
     return `${unitLabel} · ${modeText} · ${pts} 分制${rules.winByTwo !== false ? ' (須贏2分)' : ''}`;
   }
 
@@ -137,6 +147,18 @@ export const buildMatchRecordData = ({
           b: Number(p.b) || 0,
         }));
         liveStatsNote = `本節團犯：${teamAName} ${sbState.fouls?.a ?? 0} 次 ／ ${teamBName} ${sbState.fouls?.b ?? 0} 次 ｜ 剩餘暫停：${teamAName} ${sbState.timeoutsLeft?.a ?? 0} 次 ／ ${teamBName} ${sbState.timeoutsLeft?.b ?? 0} 次`;
+      } else if (template === 'SOCCER') {
+        rawSets = (sbState.halfScores || []).map((h, idx) => ({
+          label: idx === 0 ? '上半場' : idx === 1 ? '下半場' : `延長ET${idx - 1}`,
+          a: Number(h.a) || 0,
+          b: Number(h.b) || 0,
+        }));
+        const cA = sbState.cards?.a || { yellow: 0, red: 0 };
+        const cB = sbState.cards?.b || { yellow: 0, red: 0 };
+        const foulNote = sbState.rules?.foulLimitPerHalf
+          ? `本半場團犯：${teamAName} ${sbState.fouls?.a ?? 0} 次 ／ ${teamBName} ${sbState.fouls?.b ?? 0} 次 ｜ `
+          : '';
+        liveStatsNote = `${foulNote}黃／紅牌：${teamAName} (黃${cA.yellow}/紅${cA.red}) ／ ${teamBName} (黃${cB.yellow}/紅${cB.red})`;
       } else if (template === 'BASEBALL') {
         rawSets = (sbState.innings || []).map((inn, idx) => ({
           label: `${idx + 1}局`,
@@ -170,6 +192,12 @@ export const buildMatchRecordData = ({
             a: Number(p.a) || 0,
             b: Number(p.b) || 0,
           }));
+        } else if (template === 'SOCCER') {
+          activeBreakdown = (sbState.halfScores || []).map((h, idx) => ({
+            label: idx === 0 ? '上半場' : idx === 1 ? '下半場' : `延長ET${idx - 1}`,
+            a: Number(h.a) || 0,
+            b: Number(h.b) || 0,
+          }));
         } else if (template === 'BASEBALL') {
           activeBreakdown = (sbState.innings || []).map((inn, idx) => ({
             label: `${idx + 1}局`,
@@ -198,10 +226,23 @@ export const buildMatchRecordData = ({
             ? idx < (sport.defaultRules?.totalPeriods || 4)
               ? `Q${idx + 1}`
               : `OT${idx - (sport.defaultRules?.totalPeriods || 4) + 1}`
-            : template === 'BASEBALL' && match.setScores.length > 1
-              ? `${idx + 1}局`
-              : '全場比分',
+            : template === 'SOCCER' && match.setScores.length > 1
+              ? idx === 0
+                ? '上半場'
+                : idx === 1
+                  ? '下半場'
+                  : `延長ET${idx - 1}`
+              : template === 'BASEBALL' && match.setScores.length > 1
+                ? `${idx + 1}局`
+                : '全場比分',
     }));
+    if (!liveStatsNote && match.cards) {
+      const cA = match.cards.a || { yellow: 0, red: 0 };
+      const cB = match.cards.b || { yellow: 0, red: 0 };
+      if (cA.yellow > 0 || cA.red > 0 || cB.yellow > 0 || cB.red > 0) {
+        liveStatsNote = `全場黃／紅牌紀錄：${teamAName} (黃${cA.yellow}/紅${cA.red}) ／ ${teamBName} (黃${cB.yellow}/紅${cB.red})`;
+      }
+    }
   } else if (
     !isForfeit &&
     match.topTeam?.score !== null &&
@@ -223,6 +264,21 @@ export const buildMatchRecordData = ({
     isForfeit ||
     rawSets.length > 0 ||
     (match.topTeam?.score !== null && match.topTeam?.score !== undefined);
+
+  const pkScore =
+    sbState?.penaltyShootout?.enabled &&
+    (Number(sbState.penaltyShootout.a) > 0 || Number(sbState.penaltyShootout.b) > 0)
+      ? {
+          a: Number(sbState.penaltyShootout.a) || 0,
+          b: Number(sbState.penaltyShootout.b) || 0,
+        }
+      : match.penaltyScore &&
+          (Number(match.penaltyScore.a) > 0 || Number(match.penaltyScore.b) > 0)
+        ? {
+            a: Number(match.penaltyScore.a) || 0,
+            b: Number(match.penaltyScore.b) || 0,
+          }
+        : null;
 
   let statusType = 'PRE_MATCH';
   let statusLabel = '賽前檢錄／空白紀錄表';
@@ -258,16 +314,22 @@ export const buildMatchRecordData = ({
     } else {
       const sumA = rawSets.reduce((acc, s) => acc + s.a, 0);
       const sumB = rawSets.reduce((acc, s) => acc + s.b, 0);
-      headlineScoreA = String(sumA);
-      headlineScoreB = String(sumB);
+      headlineScoreA =
+        sumA === sumB && pkScore ? `${sumA} (PK ${pkScore.a})` : String(sumA);
+      headlineScoreB =
+        sumA === sumB && pkScore ? `${sumB} (PK ${pkScore.b})` : String(sumB);
       if (match.topTeam?.isWinner || match.bottomTeam?.isWinner) {
         statusType = 'COMPLETED';
-        statusLabel = '正式完賽紀錄';
+        statusLabel = pkScore && sumA === sumB ? '正式完賽（PK 點球決勝）' : '正式完賽紀錄';
         winnerSide = match.topTeam?.isWinner ? 'a' : 'b';
       } else if (sumA !== sumB) {
         statusType = 'COMPLETED';
         statusLabel = '場邊記分結算紀錄';
         winnerSide = sumA > sumB ? 'a' : 'b';
+      } else if (pkScore && pkScore.a !== pkScore.b) {
+        statusType = 'COMPLETED';
+        statusLabel = '場邊記分結算（PK 點球決勝）';
+        winnerSide = pkScore.a > pkScore.b ? 'a' : 'b';
       } else if (config.format === 'ROUND_ROBIN' && (sumA > 0 || sumB > 0)) {
         statusType = 'DRAW';
         statusLabel = '循環賽平手紀錄';
@@ -277,15 +339,21 @@ export const buildMatchRecordData = ({
       }
     }
   } else if (hasAnyScore) {
-    headlineScoreA = String(match.topTeam?.score ?? 0);
-    headlineScoreB = String(match.bottomTeam?.score ?? 0);
+    const rawMainA = match.topTeam?.score ?? 0;
+    const rawMainB = match.bottomTeam?.score ?? 0;
+    headlineScoreA =
+      rawMainA === rawMainB && pkScore ? `${rawMainA} (PK ${pkScore.a})` : String(rawMainA);
+    headlineScoreB =
+      rawMainA === rawMainB && pkScore ? `${rawMainB} (PK ${pkScore.b})` : String(rawMainB);
     if (match.topTeam?.isWinner) {
       statusType = 'COMPLETED';
-      statusLabel = '正式完賽紀錄';
+      statusLabel =
+        pkScore && rawMainA === rawMainB ? '正式完賽（PK 點球決勝）' : '正式完賽紀錄';
       winnerSide = 'a';
     } else if (match.bottomTeam?.isWinner) {
       statusType = 'COMPLETED';
-      statusLabel = '正式完賽紀錄';
+      statusLabel =
+        pkScore && rawMainA === rawMainB ? '正式完賽（PK 點球決勝）' : '正式完賽紀錄';
       winnerSide = 'b';
     } else if (
       config.format === 'ROUND_ROBIN' &&
@@ -378,6 +446,46 @@ export const buildMatchRecordData = ({
       highlightA: winnerSide === 'a',
       highlightB: winnerSide === 'b',
     });
+  } else if (template === 'SOCCER') {
+    if (statusType === 'PRE_MATCH') {
+      columns.push({ key: 'h-1', header: '上半場', valA: '', valB: '' });
+      columns.push({ key: 'h-2', header: '下半場', valA: '', valB: '' });
+      columns.push({ key: 'et', header: '延長賽 (ET)', valA: '', valB: '' });
+      columns.push({ key: 'pk', header: 'PK點球', valA: '', valB: '' });
+    } else if (rawSets.length > 1) {
+      rawSets.forEach((s, idx) => {
+        columns.push({
+          key: `h-${idx}`,
+          header:
+            s.label || (idx === 0 ? '上半場' : idx === 1 ? '下半場' : `延長ET${idx - 1}`),
+          valA: String(s.a),
+          valB: String(s.b),
+          highlightA: s.a > s.b,
+          highlightB: s.b > s.a,
+        });
+      });
+    }
+    const sumA = rawSets.reduce((acc, s) => acc + s.a, 0);
+    const sumB = rawSets.reduce((acc, s) => acc + s.b, 0);
+    if (pkScore) {
+      columns.push({
+        key: 'pk-score',
+        header: 'PK點球',
+        valA: String(pkScore.a),
+        valB: String(pkScore.b),
+        highlightA: pkScore.a > pkScore.b,
+        highlightB: pkScore.b > pkScore.a,
+      });
+    }
+    columns.push({
+      key: 'soccer-total',
+      header: '全場進球',
+      valA: statusType === 'PRE_MATCH' ? '' : isForfeit ? headlineScoreA : String(sumA),
+      valB: statusType === 'PRE_MATCH' ? '' : isForfeit ? headlineScoreB : String(sumB),
+      isSummary: true,
+      highlightA: winnerSide === 'a',
+      highlightB: winnerSide === 'b',
+    });
   } else if (template === 'BASEBALL') {
     const defaultInnings = sport.defaultRules?.totalInnings || 7;
     if (statusType === 'PRE_MATCH') {
@@ -448,7 +556,7 @@ export const buildMatchRecordData = ({
     matchTitle,
     effectiveBestOf,
     unitWord,
-    rulesSummary: buildRulesSummary(sport, effectiveBestOf, sbState),
+    rulesSummary: buildRulesSummary(sport, effectiveBestOf, sbState, config),
     statusType,
     statusLabel,
     teamA: {

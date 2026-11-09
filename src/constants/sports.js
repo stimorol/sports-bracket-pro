@@ -1,3 +1,24 @@
+export const PICKLEBALL_SCORING_MODES = {
+  SIDEOUT_DOUBLES: {
+    id: 'SIDEOUT_DOUBLES',
+    label: '雙打發球得分制 (傳統 0-0-2)',
+    shortLabel: '雙打發球得分制',
+    description: '僅發球方得分，自動輪轉 1號／2號發球員與三碼報分 (0-0-2)',
+  },
+  SIDEOUT_SINGLES: {
+    id: 'SIDEOUT_SINGLES',
+    label: '單打發球得分制 (傳統 Side-Out)',
+    shortLabel: '單打發球得分制',
+    description: '僅發球方得分，依偶數分（右區）／奇數分（左區）自動提示發球區',
+  },
+  RALLY: {
+    id: 'RALLY',
+    label: '落地得分制 (新制每球得分 Rally)',
+    shortLabel: '落地得分制 (Rally)',
+    description: '每球皆得分（接發球方贏球亦得 1 分並取得發球權），節奏明快、時間可控',
+  },
+};
+
 export const SPORTS = {
   BASKETBALL: {
     id: 'BASKETBALL',
@@ -82,6 +103,40 @@ export const SPORTS = {
       capScore: null,
       winByTwo: true,
       serviceRotation: 'ALTERNATE_2', // 每 2 分換發，Deuce 後每 1 分換發
+    },
+  },
+  FUTSAL: {
+    id: 'FUTSAL',
+    name: '五人制足球',
+    type: 'points',
+    icon: 'fa-futbol',
+    unit: 'G',
+    minLead: 1,
+    scoreboardTemplate: 'SOCCER',
+    defaultRules: {
+      totalHalves: 2,
+      halfMinutes: 20,
+      extraTimeMinutes: 5,
+      foulLimitPerHalf: 5, // 五人制足球單半場滿 5 犯後第 6 犯起判罰第二罰球點
+      timeoutsPerHalf: 1, // 上下半場各 1 次暫停
+      hasPenaltyShootout: true,
+    },
+  },
+  SOCCER: {
+    id: 'SOCCER',
+    name: '足球',
+    type: 'points',
+    icon: 'fa-futbol',
+    unit: 'G',
+    minLead: 1,
+    scoreboardTemplate: 'SOCCER',
+    defaultRules: {
+      totalHalves: 2,
+      halfMinutes: 45,
+      extraTimeMinutes: 15,
+      foulLimitPerHalf: null,
+      timeoutsPerHalf: 0,
+      hasPenaltyShootout: true,
     },
   },
   DODGEBALL: {

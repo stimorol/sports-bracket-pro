@@ -102,11 +102,11 @@ export const calculateStats = (participants, matches) => {
         statsMap[idB].ga += sA;
         statsMap[idB].gd += sB - sA;
 
-        if (sA > sB) {
+        if (sA > sB || (sA === sB && m.topTeam.isWinner)) {
           statsMap[idA].won++;
           statsMap[idA].pts += 3;
           statsMap[idB].lost++;
-        } else if (sB > sA) {
+        } else if (sB > sA || (sA === sB && m.bottomTeam.isWinner)) {
           statsMap[idB].won++;
           statsMap[idB].pts += 3;
           statsMap[idA].lost++;
@@ -254,6 +254,8 @@ const clearMatchScores = (m) => {
     isForfeit: false,
   };
   m.setScores = [];
+  m.penaltyScore = null;
+  m.cards = null;
   m.isDoubleBye = false;
   m.liveMeta = null;
   m.lockInfo = null;
@@ -273,6 +275,8 @@ export const reconcileBracket = (rawMatches, format) => {
     topTeam: { ...m.topTeam },
     bottomTeam: { ...m.bottomTeam },
     setScores: m.setScores ? m.setScores.map((s) => ({ ...s })) : [],
+    penaltyScore: m.penaltyScore ? { ...m.penaltyScore } : null,
+    cards: m.cards ? structuredClone(m.cards) : null,
     lockInfo: m.lockInfo ? { ...m.lockInfo } : null,
   }));
 
@@ -837,6 +841,7 @@ export const validateAndComputeScore = ({
   sportId,
   format,
   allowCustomMargin = false,
+  penaltySet = null,
 }) => {
   const sport = SPORTS[sportId] || SPORTS.OTHER;
   let winsA = 0;
@@ -909,9 +914,33 @@ export const validateAndComputeScore = ({
   const finalA = localBestOf > 1 ? winsA : totalA;
   const finalB = localBestOf > 1 ? winsB : totalB;
 
+  let resolvedPenaltyScore = null;
+  const rawPkA = String(penaltySet?.a ?? '').trim();
+  const rawPkB = String(penaltySet?.b ?? '').trim();
+
+  if (localBestOf === 1 && finalA === finalB && (rawPkA !== '' || rawPkB !== '')) {
+    if (rawPkA === '' || rawPkB === '') {
+      return { error: '請完整輸入雙方 PK 點球大戰比分' };
+    }
+    const pkA = Number(rawPkA);
+    const pkB = Number(rawPkB);
+    if (!Number.isInteger(pkA) || !Number.isInteger(pkB) || pkA < 0 || pkB < 0) {
+      return { error: 'PK 點球大戰比分須為 0 以上的整數' };
+    }
+    if (pkA === pkB) {
+      return { error: 'PK 點球大戰不可平手，請輸入最終分出勝負的 PK 比分' };
+    }
+    resolvedPenaltyScore = { a: pkA, b: pkB };
+  }
+
   if (format !== 'ROUND_ROBIN') {
-    if (localBestOf === 1 && finalA === finalB) {
-      return { error: '淘汰賽制不可平手，請輸入延長賽或決勝後比分' };
+    if (localBestOf === 1 && finalA === finalB && !resolvedPenaltyScore) {
+      return {
+        error:
+          sport.scoreboardTemplate === 'SOCCER'
+            ? '淘汰賽正規時間平手！請在下方輸入「⚽ PK 點球大戰比分」或延長賽進球以分出晉級隊伍'
+            : '淘汰賽制不可平手，請輸入延長賽或決勝後比分',
+      };
     }
   }
 
@@ -922,6 +951,9 @@ export const validateAndComputeScore = ({
   if (localBestOf > 1) {
     if (winsA >= neededWins && winsA > winsB) topIsWinner = true;
     else if (winsB >= neededWins && winsB > winsA) bottomIsWinner = true;
+  } else if (resolvedPenaltyScore) {
+    topIsWinner = resolvedPenaltyScore.a > resolvedPenaltyScore.b;
+    bottomIsWinner = resolvedPenaltyScore.b > resolvedPenaltyScore.a;
   } else {
     if (finalA > finalB) topIsWinner = true;
     else if (finalB > finalA) bottomIsWinner = true;
@@ -933,6 +965,7 @@ export const validateAndComputeScore = ({
       scoreA: finalA,
       scoreB: finalB,
       setScores: validSets,
+      penaltyScore: resolvedPenaltyScore,
       topIsWinner,
       bottomIsWinner,
       isForfeit: false,
@@ -954,6 +987,8 @@ export const applyMatchResultToStage = (stage, matchId, updatePayload) => {
         topTeam: { ...m.topTeam, score: null, isWinner: false, isForfeit: false },
         bottomTeam: { ...m.bottomTeam, score: null, isWinner: false, isForfeit: false },
         setScores: [],
+        penaltyScore: null,
+        cards: null,
         recordMeta: null,
         liveMeta: null,
         lockInfo: null,
@@ -977,6 +1012,8 @@ export const applyMatchResultToStage = (stage, matchId, updatePayload) => {
           isForfeit: topWins,
         },
         setScores: [],
+        penaltyScore: null,
+        cards: null,
         customBestOf: updatePayload.customBestOf || m.customBestOf,
         recordMeta: updatePayload.recordMeta || m.recordMeta || null,
         liveMeta: null,
@@ -999,6 +1036,10 @@ export const applyMatchResultToStage = (stage, matchId, updatePayload) => {
         isForfeit: false,
       },
       setScores: updatePayload.setScores || [],
+      penaltyScore:
+        updatePayload.penaltyScore !== undefined ? updatePayload.penaltyScore : null,
+      cards:
+        updatePayload.cards !== undefined ? updatePayload.cards : m.cards || null,
       customBestOf: updatePayload.customBestOf || m.customBestOf,
       recordMeta: updatePayload.recordMeta || m.recordMeta || null,
       liveMeta: updatePayload.liveMeta ?? null,

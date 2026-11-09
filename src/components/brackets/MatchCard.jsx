@@ -73,7 +73,7 @@ export const MatchCard = ({
       match.topTeam.id !== 'BYE' &&
       match.bottomTeam.id !== 'BYE'
   );
-  const canEdit = !isReadOnly && !isByeMatch && !match.isSkipped && bothTeamsReady;
+  const canInteract = Boolean(onClick) && !isByeMatch && !match.isSkipped && bothTeamsReady;
 
   const effectiveBestOf = match.customBestOf || config.bestOf || 1;
 
@@ -100,6 +100,13 @@ export const MatchCard = ({
   const setDetails =
     match.setScores && match.setScores.length > 0
       ? match.setScores.map((s) => `${s.a}-${s.b}`).join(' , ')
+      : null;
+
+  const pkText =
+    match.penaltyScore &&
+    match.penaltyScore.a !== undefined &&
+    match.penaltyScore.b !== undefined
+      ? `PK ${match.penaltyScore.a}-${match.penaltyScore.b}`
       : null;
 
   const myDeviceId = getOrCreateDeviceId();
@@ -144,7 +151,7 @@ export const MatchCard = ({
         ? 'border border-red-200 shadow-sm'
         : 'border border-stone-300 shadow-sm'
       : '',
-    canEdit ? 'interactive cursor-pointer' : 'opacity-95',
+    canInteract ? 'interactive cursor-pointer' : 'opacity-95',
   ]
     .filter(Boolean)
     .join(' ');
@@ -174,6 +181,11 @@ export const MatchCard = ({
           {!isFinal && !isFinalReset && !isThirdPlace && match.bracketType !== 'group' && (
             <span className="bg-white px-1.5 py-0.5 rounded border border-stone-300 text-[11px] text-stone-600 font-mono">
               {isLoserBracket ? 'L' : 'W'}R{match.roundIndex + 1}
+            </span>
+          )}
+          {pkText && (
+            <span className="bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded text-[10px] font-extrabold">
+              {pkText}
             </span>
           )}
           {isDraw && (
@@ -265,17 +277,21 @@ export const MatchCard = ({
         </div>
       )}
 
-      {setDetails && (
+      {(setDetails || pkText) && (
         <div className="px-3 py-1.5 bg-stone-50 text-[11px] text-stone-600 font-mono text-center border-t border-stone-200">
           {setDetails}
+          {setDetails && pkText ? ' · ' : ''}
+          {pkText && <span className="font-bold text-amber-800">{pkText}</span>}
         </div>
       )}
     </>
   );
 
   // 依循 modern-web-guidance `accessibility`：可互動對戰卡使用原生 <button type="button"> 確保完整鍵盤操作性
-  if (canEdit) {
-    const ariaSummary = `${title}：${match.topTeam.name} 對戰 ${match.bottomTeam.name}，點擊登錄或修改比分`;
+  if (canInteract) {
+    const ariaSummary = isReadOnly
+      ? `${title}：${match.topTeam.name} 對戰 ${match.bottomTeam.name}，點擊查看唯讀比賽戰況明細`
+      : `${title}：${match.topTeam.name} 對戰 ${match.bottomTeam.name}，點擊登錄或修改比分`;
     return (
       <button
         type="button"

@@ -422,6 +422,8 @@ function applySingleMatchUpdateBackend(match, updatePayload) {
     match.bottomTeam.isWinner = !topWins;
     match.bottomTeam.isForfeit = topWins;
     match.setScores = [];
+    match.penaltyScore = null;
+    match.cards = null;
     if (updatePayload.customBestOf) match.customBestOf = updatePayload.customBestOf;
     if (updatePayload.recordMeta) match.recordMeta = updatePayload.recordMeta;
     return;
@@ -434,6 +436,8 @@ function applySingleMatchUpdateBackend(match, updatePayload) {
   match.bottomTeam.isWinner = Boolean(updatePayload.bottomIsWinner);
   match.bottomTeam.isForfeit = false;
   match.setScores = updatePayload.setScores || [];
+  match.penaltyScore = updatePayload.penaltyScore || null;
+  if (updatePayload.cards) match.cards = updatePayload.cards;
   if (updatePayload.customBestOf) match.customBestOf = updatePayload.customBestOf;
   if (updatePayload.recordMeta) match.recordMeta = updatePayload.recordMeta;
 }

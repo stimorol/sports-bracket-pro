@@ -326,4 +326,44 @@ describe('Tournament Engine — Core Logic & Regression Suite', () => {
     assert.equal(stage.matches[0].topTeam.isWinner, true);
     assert.equal(calculateStats(stage.participants, stage.matches)[0].stats.pts, 3);
   });
+
+  it('9. Soccer & Futsal knockout tie (1:1) advances PK winner via penaltyScore while preserving regulation goals', () => {
+    const teams = makeTeams(4);
+    const config = { format: 'SINGLE', sport: 'SOCCER', bestOf: 1, hasThirdPlace: true };
+    let stage = {
+      id: 1,
+      name: '足球四強賽',
+      status: 'ACTIVE',
+      config,
+      participants: teams,
+      matches: generateMatches(1, config, teams),
+    };
+
+    // Validate 1:1 regulation tie with PK 4:5 -> bottomTeam wins
+    const validated = validateAndComputeScore({
+      sets: [{ a: '1', b: '1' }],
+      localBestOf: 1,
+      sportId: 'SOCCER',
+      format: 'SINGLE',
+      penaltySet: { a: '4', b: '5' },
+    });
+    assert.equal(validated.error, null);
+    assert.equal(validated.result.scoreA, 1);
+    assert.equal(validated.result.scoreB, 1);
+    assert.deepEqual(validated.result.penaltyScore, { a: 4, b: 5 });
+    assert.equal(validated.result.topIsWinner, false);
+    assert.equal(validated.result.bottomIsWinner, true);
+
+    const sf1 = stage.matches.find((m) => m.roundIndex === 0);
+    stage = applyMatchResultToStage(stage, sf1.id, validated.result);
+
+    const updatedSf1 = stage.matches.find((m) => m.id === sf1.id);
+    assert.equal(updatedSf1.topTeam.score, 1);
+    assert.equal(updatedSf1.bottomTeam.score, 1);
+    assert.deepEqual(updatedSf1.penaltyScore, { a: 4, b: 5 });
+    assert.equal(updatedSf1.bottomTeam.isWinner, true);
+
+    const finalMatch = stage.matches.find((m) => m.bracketType === 'final');
+    assert.equal(finalMatch.topTeam.id, sf1.bottomTeam.id);
+  });
 });

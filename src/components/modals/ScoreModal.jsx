@@ -23,6 +23,7 @@ export const ScoreModal = ({
   const sport = SPORTS[config?.sport] || SPORTS.OTHER;
   const [localBestOf, setLocalBestOf] = useState(config?.bestOf || 1);
   const [sets, setSets] = useState([{ a: '', b: '' }]);
+  const [penaltySet, setPenaltySet] = useState({ a: '', b: '' });
   const [allowCustomMargin, setAllowCustomMargin] = useState(false);
   const [error, setError] = useState(null);
   const [pendingPayload, setPendingPayload] = useState(null);
@@ -54,6 +55,14 @@ export const ScoreModal = ({
       };
     }
     setSets(initial);
+    if (match.penaltyScore && match.penaltyScore.a !== undefined && match.penaltyScore.b !== undefined) {
+      setPenaltySet({
+        a: String(match.penaltyScore.a),
+        b: String(match.penaltyScore.b),
+      });
+    } else {
+      setPenaltySet({ a: '', b: '' });
+    }
   }, [match, isOpen, config?.bestOf]);
 
   const handleBestOfChange = (nextBestOf) => {
@@ -106,6 +115,7 @@ export const ScoreModal = ({
       sportId: config.sport,
       format: config.format,
       allowCustomMargin,
+      penaltySet,
     });
 
     if (validationError) {
@@ -309,6 +319,53 @@ export const ScoreModal = ({
                     </div>
                   );
                 })}
+
+                {/* 足球／五人制足球（或單場淘汰平手）：PK 點球大戰比分欄 */}
+                {sport.scoreboardTemplate === 'SOCCER' && localBestOf === 1 && (
+                  <div className="mt-3 pt-3 border-t border-dashed border-stone-200 bg-amber-50/60 p-3 rounded-xl space-y-2">
+                    <div className="text-center text-xs font-extrabold text-amber-900">
+                      ⚽ PK 點球大戰比分（正規賽平手需分勝負時填寫，非平手可留空）
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      <span className="text-xs font-mono font-bold text-amber-800 w-16 text-right">
+                        PK 比分
+                      </span>
+                      <input
+                        id={`${formId}-pk-a`}
+                        name="penalty_a"
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        placeholder="-"
+                        aria-label={`${match.topTeam.name} PK 點球分數`}
+                        value={penaltySet.a}
+                        onChange={(e) => {
+                          setPenaltySet((prev) => ({ ...prev, a: e.target.value }));
+                          if (error) setError(null);
+                        }}
+                        className="w-20 min-h-[42px] text-center text-lg font-extrabold p-1.5 border border-amber-300 rounded-xl bg-white text-stone-800"
+                      />
+                      <span className="text-amber-700 font-bold" aria-hidden="true">
+                        :
+                      </span>
+                      <input
+                        id={`${formId}-pk-b`}
+                        name="penalty_b"
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        placeholder="-"
+                        aria-label={`${match.bottomTeam.name} PK 點球分數`}
+                        value={penaltySet.b}
+                        onChange={(e) => {
+                          setPenaltySet((prev) => ({ ...prev, b: e.target.value }));
+                          if (error) setError(null);
+                        }}
+                        className="w-20 min-h-[42px] text-center text-lg font-extrabold p-1.5 border border-amber-300 rounded-xl bg-white text-stone-800"
+                      />
+                    </div>
+                  </div>
+                )}
               </fieldset>
 
               {/* 特殊局分差彈性開關 */}

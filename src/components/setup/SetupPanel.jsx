@@ -1,5 +1,5 @@
 import React, { useId, useState } from 'react';
-import { SPORTS } from '../../constants/sports';
+import { PICKLEBALL_SCORING_MODES, SPORTS } from '../../constants/sports';
 import {
   createEmptyStats,
   generateUUID,
@@ -146,6 +146,18 @@ export const SetupPanel = ({
       ...config,
       sport: sportId,
       bestOf: sport.type === 'sets' ? sport.defaultBestOf || 3 : 1,
+      pickleballScoringMode:
+        sportId === 'PICKLEBALL'
+          ? config.pickleballScoringMode || 'SIDEOUT_DOUBLES'
+          : config.pickleballScoringMode,
+      pickleballTargetPoints:
+        sportId === 'PICKLEBALL'
+          ? config.pickleballTargetPoints || 11
+          : config.pickleballTargetPoints,
+      soccerHalfMinutes:
+        sportId === 'FUTSAL' || sportId === 'SOCCER'
+          ? sport.defaultRules?.halfMinutes || 20
+          : config.soccerHalfMinutes,
     });
   };
 
@@ -385,6 +397,150 @@ export const SetupPanel = ({
             </label>
           )}
         </div>
+
+        {/* 匹克球專屬：發球得分制 vs 落地得分制 (依循 modern-web-guidance `forms`：選項 < 6 個時直接展開為可見 radio 按鈕組！) */}
+        {config.sport === 'PICKLEBALL' && (
+          <div className="bg-emerald-50/70 border-2 border-emerald-200 rounded-2xl p-4 sm:p-5 space-y-4">
+            <fieldset className="space-y-2.5">
+              <legend className="text-sm font-extrabold text-emerald-950 flex items-center gap-2">
+                <i className="fa-solid fa-baseball text-emerald-600" aria-hidden="true"></i>
+                匹克球計分方式（全場預設，進入場邊數位記分板仍可單場微調）
+              </legend>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                {Object.values(PICKLEBALL_SCORING_MODES).map((mode) => {
+                  const currentMode = config.pickleballScoringMode || 'SIDEOUT_DOUBLES';
+                  const checked = currentMode === mode.id;
+                  const radioId = `${formId}-pb-mode-${mode.id}`;
+                  return (
+                    <label
+                      key={mode.id}
+                      htmlFor={radioId}
+                      className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 select-none ${
+                        checked
+                          ? 'bg-white border-emerald-600 shadow-sm'
+                          : 'bg-white/70 border-emerald-200/80 hover:border-emerald-400'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        id={radioId}
+                        name="pickleballScoringMode"
+                        value={mode.id}
+                        checked={checked}
+                        onChange={() => {
+                          const nextTarget =
+                            mode.id === 'RALLY' && (!config.pickleballTargetPoints || config.pickleballTargetPoints === 11)
+                              ? 15
+                              : config.pickleballTargetPoints || 11;
+                          setConfig({
+                            ...config,
+                            pickleballScoringMode: mode.id,
+                            pickleballTargetPoints: nextTarget,
+                          });
+                        }}
+                        className="w-4 h-4 mt-1 accent-emerald-600 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-extrabold text-stone-900">
+                          {mode.label}
+                        </div>
+                        <div className="text-xs text-stone-600 mt-0.5 leading-relaxed">
+                          {mode.description}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <fieldset className="flex flex-wrap items-center gap-3 pt-1 border-t border-emerald-200/70">
+              <legend className="text-xs sm:text-sm font-extrabold text-emerald-950 mr-2 float-left">
+                單局目標分數：
+              </legend>
+              {[11, 15, 21].map((pts) => {
+                const activePts = Number(config.pickleballTargetPoints || 11);
+                const checked = activePts === pts;
+                const ptId = `${formId}-pb-pts-${pts}`;
+                return (
+                  <label
+                    key={pts}
+                    htmlFor={ptId}
+                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl border text-xs sm:text-sm font-bold cursor-pointer inline-flex items-center gap-2 transition-colors ${
+                      checked
+                        ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
+                        : 'bg-white text-stone-700 border-emerald-300 hover:bg-emerald-100/60'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      id={ptId}
+                      name="pickleballTargetPoints"
+                      value={pts}
+                      checked={checked}
+                      onChange={() =>
+                        setConfig({ ...config, pickleballTargetPoints: pts })
+                      }
+                      className="w-3.5 h-3.5 accent-white"
+                    />
+                    <span>{pts} 分制 (Deuce 贏 2 分)</span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          </div>
+        )}
+
+        {/* 足球／五人制足球專屬：單半場時間與淘汰賽 PK 點球提示 */}
+        {(config.sport === 'FUTSAL' || config.sport === 'SOCCER') && (
+          <div className="bg-sky-50/70 border-2 border-sky-200 rounded-2xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+            <fieldset className="flex flex-wrap items-center gap-2.5">
+              <legend className="text-xs sm:text-sm font-extrabold text-sky-950 mr-2 flex items-center gap-1.5 float-left">
+                <i className="fa-solid fa-futbol text-sky-700" aria-hidden="true"></i>
+                {config.sport === 'FUTSAL'
+                  ? '五人制足球單半場時間（含單半場滿 5 犯第二罰球點提示）：'
+                  : '足球單半場時間（上下半場制）：'}
+              </legend>
+              {(config.sport === 'FUTSAL' ? [8, 10, 12, 15, 20] : [15, 20, 25, 30, 45]).map(
+                (mins) => {
+                  const defaultMins =
+                    SPORTS[config.sport]?.defaultRules?.halfMinutes || 20;
+                  const activeMins = Number(config.soccerHalfMinutes || defaultMins);
+                  const checked = activeMins === mins;
+                  const mId = `${formId}-soccer-min-${mins}`;
+                  return (
+                    <label
+                      key={mins}
+                      htmlFor={mId}
+                      className={`min-h-[40px] px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-bold cursor-pointer inline-flex items-center gap-1.5 transition-colors ${
+                        checked
+                          ? 'bg-sky-700 text-white border-sky-700 shadow-sm'
+                          : 'bg-white text-stone-700 border-sky-300 hover:bg-sky-100/60'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        id={mId}
+                        name="soccerHalfMinutes"
+                        value={mins}
+                        checked={checked}
+                        onChange={() =>
+                          setConfig({ ...config, soccerHalfMinutes: mins })
+                        }
+                        className="w-3.5 h-3.5 accent-white"
+                      />
+                      <span>{mins} 分鐘</span>
+                    </label>
+                  );
+                }
+              )}
+            </fieldset>
+
+            <div className="text-xs text-sky-900 font-semibold bg-white/80 px-3 py-2 rounded-xl border border-sky-200">
+              ⚽ 淘汰賽若正規／延長時間平手，記分板與成績登錄均支援直接輸入 <strong>PK 點球大戰比分</strong> 晉級！
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 名單輸入與管理雙欄 */}

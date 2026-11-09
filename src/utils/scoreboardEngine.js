@@ -25,6 +25,23 @@ export const createInitialScoreboardState = (match, config, overrideBestOf = nul
   const rules = { ...(sport.defaultRules || {}), bestOf };
   const template = sport.scoreboardTemplate || 'TIMED_SETS';
 
+  // 繼承賽事設定層級的匹克球計分制與目標分數預設值
+  if (template === 'PICKLEBALL') {
+    if (config?.pickleballScoringMode) {
+      rules.scoringMode = config.pickleballScoringMode;
+    }
+    if (config?.pickleballTargetPoints) {
+      const targetPts = Number(config.pickleballTargetPoints) || 11;
+      rules.targetPoints = targetPts;
+      rules.decidingSetPoints = targetPts;
+    }
+  }
+
+  // 繼承賽事設定層級的足球／五人制足球單半場分鐘數預設值
+  if (template === 'SOCCER' && config?.soccerHalfMinutes) {
+    rules.halfMinutes = Number(config.soccerHalfMinutes) || rules.halfMinutes || 20;
+  }
+
   const existingSets =
     match?.setScores && match.setScores.length > 0
       ? match.setScores.map((s) => ({
@@ -154,6 +171,71 @@ export const createInitialScoreboardState = (match, config, overrideBestOf = nul
     };
   }
 
+  if (template === 'SOCCER') {
+    const totalHalves = rules.totalHalves || 2;
+    const initialCards = {
+      a: { yellow: Number(match?.cards?.a?.yellow) || 0, red: Number(match?.cards?.a?.red) || 0 },
+      b: { yellow: Number(match?.cards?.b?.yellow) || 0, red: Number(match?.cards?.b?.red) || 0 },
+    };
+    const initialPenalty = match?.penaltyScore
+      ? {
+          enabled: true,
+          a: Number(match.penaltyScore.a) || 0,
+          b: Number(match.penaltyScore.b) || 0,
+        }
+      : { enabled: false, a: 0, b: 0 };
+
+    if (bestOf > 1) {
+      const { completedSets, activeSeed } = splitSeriesSets();
+      const freshHalves =
+        activeSeed?.breakdown && activeSeed.breakdown.length > 0
+          ? activeSeed.breakdown.map((h) => ({ a: Number(h.a) || 0, b: Number(h.b) || 0 }))
+          : Array.from({ length: totalHalves }, (_, idx) =>
+              idx === 0 && activeSeed ? { a: activeSeed.a, b: activeSeed.b } : { a: 0, b: 0 }
+            );
+      return {
+        template,
+        sportId: sport.id,
+        rules,
+        swappedSides: completedSets.length % 2 === 1,
+        completedSets,
+        currentHalf: 0,
+        halfScores: freshHalves,
+        fouls: { a: 0, b: 0 },
+        timeoutsLeft: { a: rules.timeoutsPerHalf || 0, b: rules.timeoutsPerHalf || 0 },
+        cards: initialCards,
+        penaltyShootout: initialPenalty,
+        clockRemainingMs: (rules.halfMinutes || 20) * 60 * 1000,
+      };
+    }
+
+    let halfScores;
+    if (existingSets.length >= totalHalves) {
+      halfScores = existingSets;
+    } else if (existingSets.length > 0) {
+      halfScores = Array.from({ length: totalHalves }, (_, idx) =>
+        existingSets[idx] ? { ...existingSets[idx] } : { a: 0, b: 0 }
+      );
+    } else {
+      halfScores = Array.from({ length: totalHalves }, () => ({ a: 0, b: 0 }));
+    }
+
+    return {
+      template,
+      sportId: sport.id,
+      rules,
+      swappedSides: false,
+      completedSets: [],
+      currentHalf: 0,
+      halfScores,
+      fouls: { a: 0, b: 0 },
+      timeoutsLeft: { a: rules.timeoutsPerHalf || 0, b: rules.timeoutsPerHalf || 0 },
+      cards: initialCards,
+      penaltyShootout: initialPenalty,
+      clockRemainingMs: (rules.halfMinutes || 20) * 60 * 1000,
+    };
+  }
+
   if (template === 'PICKLEBALL') {
     const { completedSets, activeSeed } =
       bestOf > 1
@@ -167,7 +249,7 @@ export const createInitialScoreboardState = (match, config, overrideBestOf = nul
       completedSets,
       currentScore: activeSeed ? { a: activeSeed.a, b: activeSeed.b } : { a: 0, b: 0 },
       servingSide: completedSets.length % 2 === 1 ? 'b' : 'a',
-      serverNumber: 2, // 匹克球雙打傳統規則：每局開局皆由 0-0-2 (第2發球員) 開始！
+      serverNumber: rules.scoringMode === 'SIDEOUT_DOUBLES' ? 2 : 1, // 雙打傳統發球得分制由 0-0-2 開始；單打與落地得分制為 1
       midGameSwapNotified: false,
     };
   }
@@ -221,6 +303,12 @@ export const getCurrentGameTotals = (state) => {
       b: (state.periodScores || []).reduce((sum, p) => sum + (Number(p.b) || 0), 0),
     };
   }
+  if (state.template === 'SOCCER') {
+    return {
+      a: (state.halfScores || []).reduce((sum, h) => sum + (Number(h.a) || 0), 0),
+      b: (state.halfScores || []).reduce((sum, h) => sum + (Number(h.b) || 0), 0),
+    };
+  }
   if (state.template === 'BASEBALL') {
     return {
       a: (state.innings || []).reduce((sum, inn) => sum + (Number(inn.a) || 0), 0),
@@ -241,6 +329,13 @@ const buildCurrentGameBreakdown = (state) => {
       label: idx < totalReg ? `Q${idx + 1}` : `OT${idx - totalReg + 1}`,
       a: Number(p.a) || 0,
       b: Number(p.b) || 0,
+    }));
+  }
+  if (state.template === 'SOCCER' && Array.isArray(state.halfScores)) {
+    return state.halfScores.map((h, idx) => ({
+      label: idx === 0 ? '上半場' : idx === 1 ? '下半場' : `延長ET${idx - 1}`,
+      a: Number(h.a) || 0,
+      b: Number(h.b) || 0,
     }));
   }
   if (state.template === 'BASEBALL' && Array.isArray(state.innings)) {
@@ -299,13 +394,29 @@ export const advanceSeriesToNextGame = (state) => {
     return next;
   }
 
+  if (next.template === 'SOCCER') {
+    next.currentHalf = 0;
+    next.halfScores = Array.from(
+      { length: next.rules.totalHalves || 2 },
+      () => ({ a: 0, b: 0 })
+    );
+    next.fouls = { a: 0, b: 0 };
+    next.timeoutsLeft = {
+      a: next.rules.timeoutsPerHalf || 0,
+      b: next.rules.timeoutsPerHalf || 0,
+    };
+    next.penaltyShootout = { enabled: false, a: 0, b: 0 };
+    next.clockRemainingMs = (next.rules.halfMinutes || 20) * 60 * 1000;
+    return next;
+  }
+
   const startVal = next.rules.startingScore || 0;
   next.currentScore = { a: startVal, b: startVal };
   next.midGameSwapNotified = false;
 
   if (next.template === 'PICKLEBALL') {
     next.servingSide = next.completedSets.length % 2 === 1 ? 'b' : 'a';
-    next.serverNumber = 2;
+    next.serverNumber = next.rules.scoringMode === 'SIDEOUT_DOUBLES' ? 2 : 1;
   } else if (next.template === 'RACKET_SETS') {
     const nextFirst = next.firstServerOfSet === 'a' ? 'b' : 'a';
     next.firstServerOfSet = nextFirst;
@@ -413,7 +524,7 @@ export const getPickleballCallout = (state) => {
     };
   }
   return {
-    code: `${currentScore.a} - ${currentScore.b}`,
+    code: `${serverScore} - ${receiverScore}`,
     modeLabel: '落地得分制 (Rally)',
     courtSideLabel,
   };
@@ -445,6 +556,33 @@ export const applyPickleballRally = (state, action) => {
       next.currentScore[next.servingSide] += 1;
     } else if (action === 'SIDE_OUT_OR_FAULT') {
       next.servingSide = next.servingSide === 'a' ? 'b' : 'a';
+      next.serverNumber = 1;
+    }
+    return next;
+  }
+
+  // 落地得分制 (RALLY)：任何一方贏得該球即得 1 分，且發球權自動轉移給贏得該球的一方！
+  if (scoringMode === 'RALLY') {
+    if (
+      action === 'RALLY_POINT_A' ||
+      action === 'POINT_A' ||
+      (action === 'SERVER_SCORES' && next.servingSide === 'a')
+    ) {
+      next.currentScore.a += 1;
+      next.servingSide = 'a';
+      next.serverNumber = 1;
+    } else if (
+      action === 'RALLY_POINT_B' ||
+      action === 'POINT_B' ||
+      (action === 'SERVER_SCORES' && next.servingSide === 'b')
+    ) {
+      next.currentScore.b += 1;
+      next.servingSide = 'b';
+      next.serverNumber = 1;
+    } else if (action === 'SIDE_OUT_OR_FAULT') {
+      const receiver = next.servingSide === 'a' ? 'b' : 'a';
+      next.currentScore[receiver] += 1;
+      next.servingSide = receiver;
       next.serverNumber = 1;
     }
     return next;
@@ -641,6 +779,59 @@ export const summarizeScoreboardToMatchResult = (state, format, finalize = false
       };
     }
 
+    if (template === 'SOCCER') {
+      const { a: totalA, b: totalB } = curTotals;
+      const halfLabel =
+        state.currentHalf === 0
+          ? '上半場'
+          : state.currentHalf === 1
+            ? '下半場'
+            : `延長ET${state.currentHalf - 1}`;
+      const pk = state.penaltyShootout;
+      const hasPkActive = Boolean(pk?.enabled && totalA === totalB);
+      const pkA = Number(pk?.a) || 0;
+      const pkB = Number(pk?.b) || 0;
+
+      if (finalize && format !== 'ROUND_ROBIN' && totalA === totalB) {
+        if (!hasPkActive || pkA === pkB) {
+          return {
+            error:
+              '淘汰賽正規時間平手！請點擊「+延長賽 (ET)」或開啟「⚽ PK 點球大戰」分出 PK 勝負後再完賽。',
+          };
+        }
+      }
+
+      const topIsWinner = finalize
+        ? totalA > totalB || (totalA === totalB && hasPkActive && pkA > pkB)
+        : false;
+      const bottomIsWinner = finalize
+        ? totalB > totalA || (totalA === totalB && hasPkActive && pkB > pkA)
+        : false;
+
+      let liveMeta = null;
+      if (!finalize) {
+        liveMeta = hasPkActive
+          ? `PK大戰 (${totalA}:${totalB} / PK ${pkA}:${pkB})`
+          : `${halfLabel} (${totalA}:${totalB})`;
+      }
+
+      return {
+        error: null,
+        result: {
+          scoreA: totalA,
+          scoreB: totalB,
+          setScores: state.halfScores.map((h) => ({ a: h.a, b: h.b })),
+          penaltyScore: hasPkActive && (pkA > 0 || pkB > 0) ? { a: pkA, b: pkB } : null,
+          cards: state.cards || null,
+          topIsWinner,
+          bottomIsWinner,
+          isForfeit: false,
+          customBestOf: 1,
+          liveMeta,
+        },
+      };
+    }
+
     // 單場制球拍/計時運動
     const { a: curA, b: curB } = curTotals;
     if (finalize && format !== 'ROUND_ROBIN' && curA === curB) {
@@ -686,6 +877,14 @@ export const summarizeScoreboardToMatchResult = (state, format, finalize = false
       } else if (template === 'BASEBALL') {
         const hLabel = `${state.currentInning + 1}局${state.half === 'top' ? '上' : '下'}`;
         liveMeta = `第${nextGameNum}戰 ${hLabel} (${curTotals.a}:${curTotals.b})`;
+      } else if (template === 'SOCCER') {
+        const sLabel =
+          state.currentHalf === 0
+            ? '上半場'
+            : state.currentHalf === 1
+              ? '下半場'
+              : `延長ET${state.currentHalf - 1}`;
+        liveMeta = `第${nextGameNum}戰 ${sLabel} (${curTotals.a}:${curTotals.b})`;
       } else {
         liveMeta = `第${nextGameNum}${unitName} (${curTotals.a}:${curTotals.b})`;
       }

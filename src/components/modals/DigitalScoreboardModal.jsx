@@ -482,6 +482,100 @@ export const DigitalScoreboardModal = ({
     if (note) setStatusBanner(note);
   };
 
+  // --- 足球 / 五人制足球 (SOCCER) 專屬操作處理 ---
+  const adjustSoccerGoals = (side, delta) => {
+    commitChange((draft) => {
+      const idx = draft.currentHalf || 0;
+      if (!draft.halfScores[idx]) {
+        draft.halfScores[idx] = { a: 0, b: 0 };
+      }
+      draft.halfScores[idx][side] = Math.max(
+        0,
+        (draft.halfScores[idx][side] || 0) + delta
+      );
+      return draft;
+    });
+  };
+
+  const adjustSoccerFouls = (side, delta) => {
+    let foulAlert = null;
+    commitChange((draft) => {
+      const nextFoul = Math.max(0, (draft.fouls?.[side] || 0) + delta);
+      draft.fouls = { ...(draft.fouls || { a: 0, b: 0 }), [side]: nextFoul };
+      const limit = draft.rules?.foulLimitPerHalf;
+      if (limit && delta > 0 && nextFoul >= limit) {
+        foulAlert =
+          nextFoul === limit
+            ? `⚠️ ${teamInfo[side].name} 本半場累積滿 ${limit} 次團犯！第 ${limit + 1} 犯起判罰第二罰球點直接自由球`
+            : `🚨 ${teamInfo[side].name} 本半場第 ${nextFoul} 次團犯 — 判罰第二罰球點直接自由球！`;
+      }
+      return draft;
+    });
+    if (foulAlert) setStatusBanner(foulAlert);
+  };
+
+  const useSoccerTimeout = (side) => {
+    setTimerRunning(false);
+    commitChange((draft) => {
+      draft.timeoutsLeft[side] = Math.max(0, (draft.timeoutsLeft?.[side] || 0) - 1);
+      return draft;
+    });
+    setStatusBanner(`⏸ ${teamInfo[side].name} 請求暫停（計時已自動暫停）`);
+  };
+
+  const switchSoccerHalf = (nextHalfIdx) => {
+    setTimerRunning(false);
+    commitChange((draft) => {
+      while (draft.halfScores.length <= nextHalfIdx) {
+        draft.halfScores.push({ a: 0, b: 0 });
+      }
+      draft.currentHalf = nextHalfIdx;
+      draft.fouls = { a: 0, b: 0 }; // 換半場單半場累積團犯歸零
+      draft.timeoutsLeft = {
+        a: draft.rules.timeoutsPerHalf || 0,
+        b: draft.rules.timeoutsPerHalf || 0,
+      };
+      const mins =
+        nextHalfIdx >= (draft.rules.totalHalves || 2)
+          ? draft.rules.extraTimeMinutes || 5
+          : draft.rules.halfMinutes || 20;
+      draft.clockRemainingMs = mins * 60 * 1000;
+      return draft;
+    });
+  };
+
+  const adjustSoccerCard = (side, cardType, delta) => {
+    commitChange((draft) => {
+      if (!draft.cards) {
+        draft.cards = { a: { yellow: 0, red: 0 }, b: { yellow: 0, red: 0 } };
+      }
+      const cur = draft.cards[side]?.[cardType] || 0;
+      draft.cards[side][cardType] = Math.max(0, cur + delta);
+      return draft;
+    });
+  };
+
+  const togglePenaltyShootout = () => {
+    setTimerRunning(false);
+    commitChange((draft) => {
+      const prevPk = draft.penaltyShootout || { enabled: false, a: 0, b: 0 };
+      draft.penaltyShootout = { ...prevPk, enabled: !prevPk.enabled };
+      return draft;
+    });
+  };
+
+  const adjustPenaltyScore = (side, delta) => {
+    commitChange((draft) => {
+      const prevPk = draft.penaltyShootout || { enabled: true, a: 0, b: 0 };
+      draft.penaltyShootout = {
+        ...prevPk,
+        enabled: true,
+        [side]: Math.max(0, (prevPk[side] || 0) + delta),
+      };
+      return draft;
+    });
+  };
+
   // --- 多戰系列賽核心流程：1. 結束本戰立即開始下一戰 | 2. 儲存本戰結果並暫離 (下次點開續記下一戰！) ---
 
   const handleFinishGameAndContinueNext = async () => {
@@ -561,6 +655,12 @@ export const DigitalScoreboardModal = ({
         draft.half = 'top';
         draft.innings = Array.from(
           { length: draft.rules.totalInnings || 7 },
+          (_, i) => (i === 0 ? { a: last.a, b: last.b } : { a: 0, b: 0 })
+        );
+      } else if (draft.template === 'SOCCER') {
+        draft.currentHalf = 0;
+        draft.halfScores = Array.from(
+          { length: draft.rules.totalHalves || 2 },
           (_, i) => (i === 0 ? { a: last.a, b: last.b } : { a: 0, b: 0 })
         );
       } else {
@@ -879,6 +979,31 @@ export const DigitalScoreboardModal = ({
                 </label>
               )}
 
+              {sbState.template === 'SOCCER' && (
+                <label className="flex items-center gap-1.5 font-bold">
+                  單半場分鐘數：
+                  <select
+                    value={sbState.rules.halfMinutes || 20}
+                    onChange={(e) => {
+                      const mins = Number(e.target.value);
+                      setTimerRunning(false);
+                      setSbState((p) => ({
+                        ...p,
+                        clockRemainingMs: mins * 60 * 1000,
+                        rules: { ...p.rules, halfMinutes: mins },
+                      }));
+                    }}
+                    className="bg-stone-800 border border-stone-700 rounded-lg px-2 py-1 text-stone-100"
+                  >
+                    {[5, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45].map((m) => (
+                      <option key={m} value={m}>
+                        {m} 分鐘
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               {sbState.template === 'TIMED_SETS' && (
                 <button
                   type="button"
@@ -994,10 +1119,33 @@ export const DigitalScoreboardModal = ({
             {sbState.template === 'PICKLEBALL' && pickleballCallout && (
               <div className="flex flex-col h-full justify-between gap-2.5 min-h-0">
                 <div className="bg-gradient-to-r from-emerald-950/90 via-stone-900 to-emerald-950/90 border border-emerald-700/60 rounded-2xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                  <div className="flex items-center gap-2.5">
-                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-extrabold border border-emerald-500/40">
-                      {pickleballCallout.modeLabel}
-                    </span>
+                  <div className="flex items-center flex-wrap gap-2">
+                    <label className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-300">
+                      <span className="sr-only">切換匹克球計分方式</span>
+                      <select
+                        aria-label="切換匹克球計分方式"
+                        value={sbState.rules.scoringMode}
+                        onChange={(e) => {
+                          const mode = e.target.value;
+                          setSbState((p) => ({
+                            ...p,
+                            serverNumber: mode === 'SIDEOUT_DOUBLES' ? 2 : 1,
+                            rules: { ...p.rules, scoringMode: mode },
+                          }));
+                        }}
+                        className="px-2.5 py-1 min-h-[32px] rounded-lg bg-emerald-500/20 text-emerald-200 text-xs font-extrabold border border-emerald-500/50 cursor-pointer"
+                      >
+                        <option value="SIDEOUT_DOUBLES" className="bg-stone-900 text-stone-100">
+                          🏓 雙打發球得分制 (0-0-2)
+                        </option>
+                        <option value="SIDEOUT_SINGLES" className="bg-stone-900 text-stone-100">
+                          🏓 單打發球得分制
+                        </option>
+                        <option value="RALLY" className="bg-stone-900 text-stone-100">
+                          ⚡ 落地得分制 (Rally 每球得分)
+                        </option>
+                      </select>
+                    </label>
                     <span className="text-xs sm:text-sm text-stone-200 font-bold">
                       發球：<strong className="text-emerald-300">{teamInfo[sbState.servingSide].name}</strong>
                       <span className="ml-1.5 text-stone-400">({pickleballCallout.courtSideLabel})</span>
@@ -1707,6 +1855,341 @@ export const DigitalScoreboardModal = ({
               </div>
             )}
 
+            {/* ==================== 模板 F：足球／五人制足球 SOCCER (上下半場 + 延長 + PK點球 + 紅黃牌 + 犯規累計) ==================== */}
+            {sbState.template === 'SOCCER' && (
+              <div className="flex flex-col h-full justify-between gap-2 min-h-0">
+                {/* 半場控制與大字計時器列 */}
+                <div className="bg-stone-900 border border-stone-800 rounded-2xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-bold text-stone-400 mr-1">半場</span>
+                    {(sbState.halfScores || []).map((h, idx) => {
+                      const halfLabel =
+                        idx === 0 ? '上半場' : idx === 1 ? '下半場' : `延長ET${idx - 1}`;
+                      return (
+                        <button
+                          key={halfLabel}
+                          type="button"
+                          onClick={() => switchSoccerHalf(idx)}
+                          className={`min-h-[38px] px-3 rounded-xl font-black text-xs transition-all ${
+                            sbState.currentHalf === idx
+                              ? 'bg-emerald-500 text-stone-950 shadow-lg shadow-emerald-500/30'
+                              : 'bg-stone-800 text-stone-300 hover:bg-stone-700'
+                          }`}
+                        >
+                          {halfLabel}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => switchSoccerHalf((sbState.halfScores || []).length)}
+                      className="min-h-[38px] px-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-amber-300 text-xs font-extrabold border border-stone-700"
+                      title="新增延長賽半場 (ET)"
+                    >
+                      +延長賽 ET
+                    </button>
+                    <button
+                      type="button"
+                      onClick={togglePenaltyShootout}
+                      className={`min-h-[38px] px-3 rounded-xl text-xs font-extrabold border transition-all ${
+                        sbState.penaltyShootout?.enabled
+                          ? 'bg-amber-500 text-stone-950 border-amber-300 shadow'
+                          : 'bg-stone-800 hover:bg-stone-700 text-amber-200 border-stone-700'
+                      }`}
+                    >
+                      ⚽ PK 點球大戰 {sbState.penaltyShootout?.enabled ? `(${sbState.penaltyShootout.a}:${sbState.penaltyShootout.b})` : ''}
+                    </button>
+                  </div>
+
+                  {/* 大字計時器 */}
+                  <div className="flex items-center gap-2 mx-auto sm:mx-0">
+                    <button
+                      type="button"
+                      onClick={() => adjustClockSeconds(60)}
+                      className="min-h-[38px] px-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-xs font-bold text-stone-300"
+                    >
+                      +1分
+                    </button>
+                    <div
+                      className={`scoreboard-clock-digit font-mono px-3.5 py-0.5 rounded-xl border-2 tracking-wider ${
+                        timerRunning
+                          ? 'bg-emerald-950/70 border-emerald-500 text-emerald-300'
+                          : 'bg-black border-stone-700 text-amber-300'
+                      }`}
+                    >
+                      {formatClock(sbState.clockRemainingMs)}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => adjustClockSeconds(-10)}
+                      className="min-h-[38px] px-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-xs font-bold text-stone-300"
+                    >
+                      -10秒
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTimerRunning((r) => !r)}
+                      className={`min-h-[40px] px-4 rounded-xl font-black text-sm shadow transition-all ${
+                        timerRunning
+                          ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }`}
+                    >
+                      {timerRunning ? '⏸ 暫停' : '▶ 開錶'}
+                    </button>
+                  </div>
+
+                  {/* 進球語音播報 */}
+                  <button
+                    type="button"
+                    onClick={() => speakScore(`${curGameTotals.a} 比 ${curGameTotals.b}`)}
+                    className="min-h-[38px] px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold border border-stone-700"
+                  >
+                    🔊 播報比分
+                  </button>
+                </div>
+
+                {/* PK 點球大戰展開操作列（當平手進入 PK 時） */}
+                {sbState.penaltyShootout?.enabled && (
+                  <div className="bg-amber-950/80 border border-amber-500/70 rounded-2xl px-4 py-2 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="text-xs font-extrabold text-amber-200 flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-amber-500 text-stone-950 font-black">PK 點球大戰</span>
+                      <span>正規賽與延長賽平手時，以 PK 點球進球數裁定淘汰賽晉級隊伍：</span>
+                    </div>
+                    <div className="flex items-center gap-4 mx-auto sm:mx-0">
+                      {[leftKey, rightKey].map((side) => {
+                        const info = teamInfo[side];
+                        const pkVal = sbState.penaltyShootout?.[side] || 0;
+                        return (
+                          <div key={`pk-${side}`} className="flex items-center gap-1.5 bg-stone-950/90 px-3 py-1 rounded-xl border border-amber-500/40">
+                            <span className={`text-xs font-black ${info.accentText}`}>{info.name} PK</span>
+                            <button
+                              type="button"
+                              onClick={() => adjustPenaltyScore(side, -1)}
+                              className="w-7 h-7 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 font-black text-xs"
+                            >
+                              -1
+                            </button>
+                            <span className="font-mono font-black text-lg text-amber-300 px-1.5">{pkVal}</span>
+                            <button
+                              type="button"
+                              onClick={() => adjustPenaltyScore(side, 1)}
+                              className="w-8 h-7 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs"
+                            >
+                              +1
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 左右雙隊超巨型進球記分卡 */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 flex-grow min-h-0">
+                  {[leftKey, rightKey].map((side) => {
+                    const info = teamInfo[side];
+                    const totalScore = curGameTotals[side] || 0;
+                    const currHalfIdx = sbState.currentHalf || 0;
+                    const currHalfLabel =
+                      currHalfIdx === 0
+                        ? '上半場'
+                        : currHalfIdx === 1
+                          ? '下半場'
+                          : `延長ET${currHalfIdx - 1}`;
+                    const currHalfScore = sbState.halfScores?.[currHalfIdx]?.[side] || 0;
+                    const fouls = sbState.fouls?.[side] || 0;
+                    const foulLimit = sbState.rules.foulLimitPerHalf || 0;
+                    const isSecondPenaltyWarn = foulLimit > 0 && fouls >= foulLimit;
+                    const timeoutsLeft = sbState.timeoutsLeft?.[side] || 0;
+                    const yellowCards = sbState.cards?.[side]?.yellow || 0;
+                    const redCards = sbState.cards?.[side]?.red || 0;
+
+                    return (
+                      <div
+                        key={side}
+                        className={`rounded-2xl p-3 sm:p-4 bg-gradient-to-b from-stone-900 to-black border-2 ${info.cardBorder} flex flex-col justify-between min-h-0`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className={`text-xl sm:text-3xl lg:text-4xl font-black truncate ${info.accentText}`}>
+                              {info.name}
+                            </div>
+                            <div className="text-xs font-bold text-stone-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                              <span>
+                                本半場 ({currHalfLabel})：{currHalfScore} 球
+                              </span>
+                              {sbState.penaltyShootout?.enabled && (
+                                <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black">
+                                  PK {sbState.penaltyShootout[side] || 0}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                            {renderSeriesBadgeForSide(side)}
+                            {isSecondPenaltyWarn && (
+                              <span className="px-2.5 py-1 rounded-full bg-red-600 text-white text-[11px] font-black animate-pulse shadow">
+                                ⚠️ 累計達 {foulLimit} 犯 (第二罰球點)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 點擊巨型數字區直接 +1 進球 */}
+                        <button
+                          type="button"
+                          onClick={() => adjustSoccerGoals(side, 1)}
+                          title={`點擊直接為 ${info.name} +1 進球`}
+                          className="flex-grow flex items-center justify-center my-1 rounded-2xl hover:bg-white/[0.03] active:scale-[0.98] transition-transform cursor-pointer select-none"
+                        >
+                          <span className="scoreboard-giant-digit font-mono font-black tracking-tighter text-white drop-shadow-[0_6px_28px_rgba(255,255,255,0.18)]">
+                            {totalScore}
+                          </span>
+                        </button>
+
+                        {/* 進球加減 + 紅黃牌 + 團隊犯規/暫停 */}
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => adjustSoccerGoals(side, 1)}
+                              className={`min-h-[48px] sm:min-h-[54px] rounded-xl font-black text-base sm:text-xl shadow-lg active:scale-95 transition-transform ${info.btnPlus}`}
+                            >
+                              ⚽ +1 進球
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => adjustSoccerGoals(side, -1)}
+                              className="min-h-[48px] sm:min-h-[54px] rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-sm border border-stone-700"
+                            >
+                              -1 更正
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-stone-800 text-xs">
+                            {/* 黃牌 / 紅牌紀錄 */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => adjustSoccerCard(side, 'yellow', 1)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  adjustSoccerCard(side, 'yellow', -1);
+                                }}
+                                title="點擊 +1 黃牌（右鍵 -1）"
+                                className="min-h-[34px] px-2.5 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/50 text-amber-200 font-black flex items-center gap-1"
+                              >
+                                <span className="inline-block w-2.5 h-3.5 rounded-xs bg-amber-400"></span>
+                                黃牌 {yellowCards}
+                              </button>
+                              {yellowCards > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => adjustSoccerCard(side, 'yellow', -1)}
+                                  className="min-h-[34px] px-1.5 rounded-lg bg-stone-800 text-stone-400 hover:text-white text-[10px] font-bold"
+                                  title="減少黃牌"
+                                >
+                                  -
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => adjustSoccerCard(side, 'red', 1)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  adjustSoccerCard(side, 'red', -1);
+                                }}
+                                title="點擊 +1 紅牌（右鍵 -1）"
+                                className="min-h-[34px] px-2.5 rounded-lg bg-red-600/25 hover:bg-red-600/35 border border-red-500/60 text-red-200 font-black flex items-center gap-1"
+                              >
+                                <span className="inline-block w-2.5 h-3.5 rounded-xs bg-red-500"></span>
+                                紅牌 {redCards}
+                              </button>
+                              {redCards > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => adjustSoccerCard(side, 'red', -1)}
+                                  className="min-h-[34px] px-1.5 rounded-lg bg-stone-800 text-stone-400 hover:text-white text-[10px] font-bold"
+                                  title="減少紅牌"
+                                >
+                                  -
+                                </button>
+                              )}
+                            </div>
+
+                            {/* 五人制單半場累計犯規 & 暫停 */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {foulLimit > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-stone-400 font-bold">
+                                    半場犯規 <strong className={isSecondPenaltyWarn ? 'text-red-400' : 'text-white'}>{fouls}</strong>/{foulLimit}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => adjustSoccerFouls(side, 1)}
+                                    className="px-2 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-200 font-bold"
+                                  >
+                                    +犯規
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => adjustSoccerFouls(side, -1)}
+                                    className="px-1.5 py-1 rounded-lg bg-stone-800 text-stone-400"
+                                  >
+                                    -1
+                                  </button>
+                                </div>
+                              )}
+                              {sbState.rules.timeoutsPerHalf > 0 && (
+                                <button
+                                  type="button"
+                                  disabled={timeoutsLeft <= 0}
+                                  onClick={() => useSoccerTimeout(side)}
+                                  className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 disabled:opacity-40 text-amber-300 font-bold"
+                                >
+                                  暫停 ({timeoutsLeft})
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 各半場比分明細列 */}
+                <div className="bg-stone-900/90 border border-stone-800 rounded-xl px-4 py-1.5 flex items-center justify-between text-xs overflow-x-auto gap-4 shrink-0">
+                  <span className="font-bold text-stone-400 shrink-0">各半場進球明細</span>
+                  <div className="flex items-center gap-2">
+                    {(sbState.halfScores || []).map((p, idx) => {
+                      const halfLabel =
+                        idx === 0 ? '上半場' : idx === 1 ? '下半場' : `延長ET${idx - 1}`;
+                      return (
+                        <span
+                          key={halfLabel}
+                          className={`px-2.5 py-0.5 rounded-lg font-mono font-bold ${
+                            idx === sbState.currentHalf
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-stone-800 text-stone-300'
+                          }`}
+                        >
+                          {halfLabel}: {p[leftKey]}-{p[rightKey]}
+                        </span>
+                      );
+                    })}
+                    {sbState.penaltyShootout?.enabled && (
+                      <span className="px-2.5 py-0.5 rounded-lg font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        PK: {sbState.penaltyShootout[leftKey]}-{sbState.penaltyShootout[rightKey]}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ==================== 模板 E：計時局數制 TIMED_SETS (躲避球 / 其他通用) ==================== */}
             {sbState.template === 'TIMED_SETS' && (
               <div className="flex flex-col h-full justify-between gap-2.5 min-h-0">
@@ -1812,6 +2295,8 @@ export const DigitalScoreboardModal = ({
                   <strong className="text-white mx-1.5">
                     {teamInfo.a.name} {confirmFinalize.result.scoreA} :{' '}
                     {confirmFinalize.result.scoreB} {teamInfo.b.name}
+                    {confirmFinalize.result.penaltyScore &&
+                      ` (PK ${confirmFinalize.result.penaltyScore.a}:${confirmFinalize.result.penaltyScore.b})`}
                   </strong>
                   {confirmFinalize.result.topIsWinner && `（勝方：${teamInfo.a.name}）`}
                   {confirmFinalize.result.bottomIsWinner && `（勝方：${teamInfo.b.name}）`}

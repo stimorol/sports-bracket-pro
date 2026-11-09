@@ -3,6 +3,7 @@ import { DoubleEliminationLayout } from './components/brackets/DoubleElimination
 import { ResultsView } from './components/brackets/ResultsView';
 import { RoundRobinLayout } from './components/brackets/RoundRobinLayout';
 import { SingleEliminationLayout } from './components/brackets/SingleEliminationLayout';
+import { SpectatorLiveBoard } from './components/brackets/SpectatorLiveBoard';
 import { CopyrightFooter } from './components/common/CopyrightFooter';
 import { InlineEditableText } from './components/common/InlineEditableText';
 import { ToastRegion } from './components/common/ToastRegion';
@@ -15,6 +16,8 @@ import {
 } from './components/modals/MatchRecordModal';
 import { PromotionModal } from './components/modals/PromotionModal';
 import { ScoreModal } from './components/modals/ScoreModal';
+import { SpectatorMatchModal } from './components/modals/SpectatorMatchModal';
+import { SpectatorShareModal } from './components/modals/SpectatorShareModal';
 import { TeamManagerModal } from './components/modals/TeamManagerModal';
 import { SetupPanel } from './components/setup/SetupPanel';
 import {
@@ -131,10 +134,14 @@ export const App = () => {
   const [activeStageId, setActiveStageId] = useState(
     initialSavedState?.activeStageId || 1
   );
-  const [viewTab, setViewTab] = useState('BRACKET'); // 'BRACKET' | 'PODIUM'
+  const [viewTab, setViewTab] = useState(
+    initialQuery.initialRole === 'view' ? 'LIVE_BOARD' : 'BRACKET'
+  ); // 'BRACKET' | 'LIVE_BOARD' | 'PODIUM'
 
   // Modals & UI States
   const [selectedMatch, setSelectedMatch] = useState(null); // 快速成績輸入視窗 (Admin)
+  const [spectatorDetailMatchId, setSpectatorDetailMatchId] = useState(null); // 觀賽者唯讀戰況明細視窗
+  const [showSpectatorShareModal, setShowSpectatorShareModal] = useState(false); // 觀賽 QR Code 與本機防誤觸鎖定視窗
   const [scoreboardMatchId, setScoreboardMatchId] = useState(null); // 數位記分板開啟中之場次 ID
   const [scoreboardOverrideBestOf, setScoreboardOverrideBestOf] = useState(null);
   const [isScoreboardSyncing, setIsScoreboardSyncing] = useState(false);
@@ -226,6 +233,12 @@ export const App = () => {
     if (!selectedMatch || !activeStage) return null;
     return activeStage.matches.find((m) => m.id === selectedMatch.id) || selectedMatch;
   }, [selectedMatch, activeStage]);
+
+  // 觀賽者點擊查看的唯讀戰況明細場次
+  const spectatorDetailMatch = useMemo(() => {
+    if (!spectatorDetailMatchId || !activeStage) return null;
+    return activeStage.matches.find((m) => m.id === spectatorDetailMatchId) || null;
+  }, [spectatorDetailMatchId, activeStage]);
 
   const podiumWinners = useMemo(() => computePodium(activeStage), [activeStage]);
   const hasChampion = Boolean(podiumWinners[0]);
@@ -634,10 +647,13 @@ export const App = () => {
     [activeStage, deviceId, deviceName, gasUrl, isScorerMode, notify, postGranularMatchAction]
   );
 
-  // 點擊對戰卡：紀錄組平板直接開啟數位記分板；主辦端開啟快速輸入/記分板雙模選單
+  // 點擊對戰卡：唯讀觀賽模式開啟 100% 唯讀戰況明細卡；紀錄組平板開啟數位記分板；主辦端開啟快速輸入/記分板雙模選單
   const handleMatchCardClick = useCallback(
     (match) => {
-      if (isReadOnly) return;
+      if (isReadOnly) {
+        setSpectatorDetailMatchId(match.id);
+        return;
+      }
       if (isScorerMode) {
         launchScoreboardWithLock(match);
         return;
@@ -921,6 +937,9 @@ export const App = () => {
         hasThirdPlace: qualifiers.length >= 4,
         hasBracketReset: true,
         groupCount: 1,
+        pickleballScoringMode: activeStage.config.pickleballScoringMode,
+        pickleballTargetPoints: activeStage.config.pickleballTargetPoints,
+        soccerHalfMinutes: activeStage.config.soccerHalfMinutes,
       },
       participants: qualifiers.map((p, i) => ({
         ...p,
@@ -991,9 +1010,9 @@ export const App = () => {
             {/* 角色專屬狀態列：1. 唯讀觀賽模式 | 2. 紀錄組平板模式 | 3. 主辦管理模式 */}
             {isReadOnly ? (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-blue-100 text-blue-900 border border-blue-300 flex items-center gap-1.5">
-                  <i className="fa-solid fa-eye" aria-hidden="true"></i>
-                  即時觀賽模式 (唯讀)
+                <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-sky-100 text-sky-900 border border-sky-300 flex items-center gap-1.5">
+                  <i className="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                  觀賽防誤觸模式 (唯讀)
                 </span>
                 {gasUrl && (
                   <>
@@ -1019,10 +1038,13 @@ export const App = () => {
                 {initialQuery.initialRole !== 'view' && (
                   <button
                     type="button"
-                    onClick={() => setUserRole('admin')}
-                    className="no-print text-xs font-bold text-stone-600 hover:text-orange-700 underline px-2 py-1"
+                    onClick={() => {
+                      setUserRole('admin');
+                      notify('已解除防誤觸鎖定，返回主辦管理模式', 'info', 2500);
+                    }}
+                    className="no-print text-xs font-extrabold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg px-2.5 py-1 transition-colors"
                   >
-                    返回主辦管理
+                    🔓 解鎖返回主辦管理
                   </button>
                 )}
               </div>
@@ -1054,7 +1076,7 @@ export const App = () => {
                 )}
               </div>
             ) : (
-              <div className="no-print flex items-center gap-2">
+              <div className="no-print flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setIsCloudModalOpen(true)}
@@ -1088,6 +1110,18 @@ export const App = () => {
                     <span className="hidden md:inline">一鍵上傳</span>
                   </button>
                 )}
+
+                {activeStage.status === 'ACTIVE' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSpectatorShareModal(true)}
+                    title="開啟家長／同學觀賽 QR Code 或切換本機防誤觸觀賽鎖定"
+                    className="text-xs font-extrabold px-3 py-1.5 min-h-[36px] rounded-full bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 transition-colors flex items-center gap-1.5"
+                  >
+                    <i className="fa-solid fa-qrcode text-sky-600" aria-hidden="true"></i>
+                    <span>觀賽專區 / 防誤觸</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1104,7 +1138,7 @@ export const App = () => {
                     aria-current={isActive ? 'page' : undefined}
                     onClick={() => {
                       setActiveStageId(s.id);
-                      setViewTab('BRACKET');
+                      if (viewTab === 'PODIUM') setViewTab('BRACKET');
                     }}
                     className={`px-3 py-1.5 min-h-[34px] text-xs font-extrabold rounded-lg transition-all ${
                       isActive
@@ -1118,7 +1152,7 @@ export const App = () => {
               })}
             </nav>
 
-            {/* 賽程表 / 榮耀榜 視圖切換 & 比賽紀錄單 PDF 匯出入口（紀錄組平板與主辦端皆可使用！） */}
+            {/* 賽程表 / 即時戰況看板 / 榮耀榜 視圖切換 & 比賽紀錄單 PDF 匯出入口 */}
             {activeStage.status === 'ACTIVE' && (
               <>
                 <div
@@ -1141,6 +1175,19 @@ export const App = () => {
                   </button>
                   <button
                     type="button"
+                    aria-pressed={viewTab === 'LIVE_BOARD'}
+                    onClick={() => setViewTab('LIVE_BOARD')}
+                    className={`px-3 py-1.5 min-h-[34px] text-xs font-extrabold rounded-lg transition-all flex items-center gap-1.5 ${
+                      viewTab === 'LIVE_BOARD'
+                        ? 'bg-sky-600 text-white shadow-sm'
+                        : 'text-stone-700 hover:text-sky-800'
+                    }`}
+                  >
+                    <i className="fa-solid fa-tv" aria-hidden="true"></i>
+                    即時戰況看板
+                  </button>
+                  <button
+                    type="button"
                     aria-pressed={viewTab === 'PODIUM'}
                     onClick={() => setViewTab('PODIUM')}
                     className={`px-3 py-1.5 min-h-[34px] text-xs font-extrabold rounded-lg transition-all flex items-center gap-1 ${
@@ -1157,15 +1204,17 @@ export const App = () => {
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleOpenMatchRecord(null, null)}
-                  className="px-3 py-1.5 min-h-[36px] text-xs font-extrabold bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-300 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
-                  title="匯出單場或批次正式比賽紀錄單 PDF（可直接列印簽認）"
-                >
-                  <i className="fa-solid fa-file-pdf text-orange-600" aria-hidden="true"></i>
-                  比賽紀錄 PDF
-                </button>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenMatchRecord(null, null)}
+                    className="px-3 py-1.5 min-h-[36px] text-xs font-extrabold bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-300 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
+                    title="匯出單場或批次正式比賽紀錄單 PDF（可直接列印簽認）"
+                  >
+                    <i className="fa-solid fa-file-pdf text-orange-600" aria-hidden="true"></i>
+                    比賽紀錄 PDF
+                  </button>
+                )}
               </>
             )}
 
@@ -1263,6 +1312,11 @@ export const App = () => {
                     💡 點擊下方任一場次卡片即可開啟「數位記分板」並自動鎖定該場次
                   </span>
                 )}
+                {isReadOnly && (
+                  <span className="text-sky-800 font-bold ml-2">
+                    👀 觀賽防誤觸保護中：點擊任一場次卡片或「即時戰況看板」即可查看各局／各半場詳細比分，完全不會改動大會成績
+                  </span>
+                )}
               </div>
               {lastSyncTime && <span>雲端同步：{lastSyncTime}</span>}
             </div>
@@ -1314,6 +1368,14 @@ export const App = () => {
           )
         ) : viewTab === 'PODIUM' ? (
           <ResultsView stage={activeStage} tournamentTitle={tournamentTitle} />
+        ) : viewTab === 'LIVE_BOARD' ? (
+          <SpectatorLiveBoard
+            stage={activeStage}
+            onInspectMatch={(m) => setSpectatorDetailMatchId(m.id)}
+            onOpenShareModal={
+              !isReadOnly ? () => setShowSpectatorShareModal(true) : undefined
+            }
+          />
         ) : activeStage.config.format === 'SINGLE' ? (
           <SingleEliminationLayout
             matches={activeStage.matches}
@@ -1341,6 +1403,33 @@ export const App = () => {
 
       {/* 全域版權與非商業授權聲明頁尾 */}
       <CopyrightFooter />
+
+      {/* 觀賽者專用 100% 唯讀戰況明細視窗 (家長／同學防誤觸查閱) */}
+      <SpectatorMatchModal
+        match={spectatorDetailMatch}
+        stage={activeStage}
+        tournamentTitle={tournamentTitle}
+        isOpen={Boolean(spectatorDetailMatch)}
+        onClose={() => setSpectatorDetailMatchId(null)}
+      />
+
+      {/* 觀賽者 QR Code 海報與本機防誤觸鎖定視窗 */}
+      <SpectatorShareModal
+        isOpen={showSpectatorShareModal}
+        onClose={() => setShowSpectatorShareModal(false)}
+        gasUrl={gasUrl}
+        tournamentTitle={tournamentTitle}
+        onOpenCloudSetup={() => setIsCloudModalOpen(true)}
+        onEnterLocalSpectatorLock={() => {
+          setUserRole('view');
+          setViewTab('LIVE_BOARD');
+          notify(
+            '已啟動「觀賽防誤觸鎖定模式」！點擊任何場次卡片僅會開啟唯讀戰況明細，不會改動分數。',
+            'info',
+            4500
+          );
+        }}
+      />
 
       {/* 場邊平板全螢幕數位記分板 */}
       <DigitalScoreboardModal

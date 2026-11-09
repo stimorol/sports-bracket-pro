@@ -334,4 +334,109 @@ describe('Digital Scoreboard Engine — Sport-Specific Rules & Pickleball Tests'
     assert.equal(recForfeit.teamA.headlineScore, '棄權');
     assert.equal(recForfeit.teamB.headlineScore, '勝');
   });
+
+  it('8. Pickleball Rally Scoring (落地得分制) inherits stage config and transfers serve to rally winner', () => {
+    const mockMatch = {
+      id: 'S1-R1-M5',
+      topTeam: { id: 'T1', name: '甲班匹克隊', score: null },
+      bottomTeam: { id: 'T2', name: '乙班匹克隊', score: null },
+      setScores: [],
+    };
+    let state = createInitialScoreboardState(mockMatch, {
+      sport: 'PICKLEBALL',
+      bestOf: 3,
+      pickleballScoringMode: 'RALLY',
+      pickleballTargetPoints: 15,
+    });
+
+    assert.equal(state.rules.scoringMode, 'RALLY');
+    assert.equal(state.rules.targetPoints, 15);
+    assert.equal(getPickleballCallout(state).code, '0 - 0');
+    assert.match(getPickleballCallout(state).modeLabel, /落地得分制/);
+
+    // Team A serves initially; Team B wins the rally -> Team B gets +1 point AND becomes servingSide!
+    state = applyPickleballRally(state, 'POINT_B');
+    assert.equal(state.currentScore.a, 0);
+    assert.equal(state.currentScore.b, 1);
+    assert.equal(state.servingSide, 'b');
+    assert.equal(getPickleballCallout(state).code, '1 - 0'); // Server (B) score called first
+
+    // Team B wins next rally -> 2 - 0
+    state = applyPickleballRally(state, 'POINT_B');
+    assert.equal(state.currentScore.b, 2);
+    assert.equal(state.servingSide, 'b');
+    assert.equal(getPickleballCallout(state).code, '2 - 0');
+
+    // Team A wins rally -> Team A gets +1 point AND serve transfers to Team A!
+    state = applyPickleballRally(state, 'POINT_A');
+    assert.equal(state.currentScore.a, 1);
+    assert.equal(state.currentScore.b, 2);
+    assert.equal(state.servingSide, 'a');
+    assert.equal(getPickleballCallout(state).code, '1 - 2');
+  });
+
+  it('9. Futsal & Soccer scoreboard handles halves, PK shootout tiebreaker, cards, and PDF record columns', () => {
+    const mockMatch = {
+      id: 'S1-R1-M6',
+      topTeam: { id: 'F1', name: '雄鷹五人制', score: null },
+      bottomTeam: { id: 'F2', name: '猛虎五人制', score: null },
+      setScores: [],
+    };
+    const sb = createInitialScoreboardState(mockMatch, {
+      sport: 'FUTSAL',
+      bestOf: 1,
+      soccerHalfMinutes: 15,
+    });
+
+    assert.equal(sb.template, 'SOCCER');
+    assert.equal(sb.rules.halfMinutes, 15);
+    assert.equal(sb.rules.foulLimitPerHalf, 5);
+
+    // 1st half 1:0, 2nd half 1:2 -> regulation tied 2:2
+    sb.halfScores = [
+      { a: 1, b: 0 },
+      { a: 1, b: 2 },
+    ];
+    sb.cards = {
+      a: { yellow: 1, red: 0 },
+      b: { yellow: 2, red: 1 },
+    };
+
+    // Without PK enabled, finalizing a 2:2 tie in SINGLE elimination is blocked
+    const blockedTie = summarizeScoreboardToMatchResult(sb, 'SINGLE', true);
+    assert.ok(blockedTie.error);
+    assert.match(blockedTie.error, /PK/);
+
+    // Enable PK shootout 3:4 -> Team B wins via PK!
+    sb.penaltyShootout = { enabled: true, a: 3, b: 4 };
+    const pkResult = summarizeScoreboardToMatchResult(sb, 'SINGLE', true);
+    assert.equal(pkResult.error, null);
+    assert.equal(pkResult.result.scoreA, 2);
+    assert.equal(pkResult.result.scoreB, 2);
+    assert.deepEqual(pkResult.result.penaltyScore, { a: 3, b: 4 });
+    assert.equal(pkResult.result.topIsWinner, false);
+    assert.equal(pkResult.result.bottomIsWinner, true);
+
+    // Verify buildMatchRecordData includes PK column and card notes
+    const rec = buildMatchRecordData({
+      match: {
+        ...mockMatch,
+        topTeam: { ...mockMatch.topTeam, score: 2, isWinner: false },
+        bottomTeam: { ...mockMatch.bottomTeam, score: 2, isWinner: true },
+        setScores: pkResult.result.setScores,
+        penaltyScore: pkResult.result.penaltyScore,
+        cards: pkResult.result.cards,
+      },
+      stage: {
+        id: 1,
+        name: '四強準決賽',
+        config: { sport: 'FUTSAL', format: 'SINGLE', bestOf: 1, soccerHalfMinutes: 15 },
+      },
+      tournamentTitle: '校園五人制足球聯賽',
+    });
+    assert.equal(rec.winnerName, '猛虎五人制');
+    assert.ok(rec.columns.some((c) => c.key === 'pk-score' && c.valA === '3' && c.valB === '4'));
+    assert.match(rec.statusLabel, /PK 點球決勝/);
+    assert.match(rec.liveStatsNote, /黃1/);
+  });
 });
